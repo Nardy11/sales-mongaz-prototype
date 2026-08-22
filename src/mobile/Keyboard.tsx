@@ -6,6 +6,7 @@ import {
   type Ref,
   type TextareaHTMLAttributes,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -145,7 +146,9 @@ export function useKeyboardDismissDrag() {
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
       if (!keyboard.visible) return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
+      const ownsAttachedFooterDismissal = event.currentTarget.matches(".flow-fixed-footer");
       if (
+        !ownsAttachedFooterDismissal &&
         event.target instanceof Element &&
         event.target.closest('button, input, textarea, select, a, [role="button"], [contenteditable="true"]')
       ) {
@@ -212,21 +215,29 @@ export function KeyboardDock() {
   const keyboard = useKeyboard();
   const { device } = useMobileDevice();
   const dismissDrag = useKeyboardDismissDrag();
+  const [interactiveVisible, setInteractiveVisible] = useState(false);
   const keyboardTransition = keyboard.isDragging
     ? { duration: 0 }
     : { duration: 0.26, ease: [0.2, 0.8, 0.2, 1] as [number, number, number, number] };
+
+  useEffect(() => {
+    if (!keyboard.visible) setInteractiveVisible(false);
+  }, [keyboard.visible]);
 
   return (
     <motion.div
       className="keyboard-dock"
       data-platform={device.platform}
       data-testid="keyboard-dock"
-      data-visible={keyboard.visible ? "true" : "false"}
+      data-visible={keyboard.visible && interactiveVisible ? "true" : "false"}
       initial={{ y: keyboard.fullHeight }}
       animate={{ y: keyboard.visible ? keyboard.dragOffset : keyboard.fullHeight }}
       aria-hidden={keyboard.visible ? undefined : "true"}
       style={{ height: keyboard.fullHeight }}
       transition={keyboardTransition}
+      onAnimationComplete={() => {
+        if (keyboard.visible && !keyboard.isDragging) setInteractiveVisible(true);
+      }}
       {...dismissDrag}
     >
       <img

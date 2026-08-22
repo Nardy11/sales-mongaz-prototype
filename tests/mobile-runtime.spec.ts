@@ -126,6 +126,17 @@ test("keyboard and its attached footer dismiss on the same transition", async ({
   expect(await footer.evaluate((element) => getComputedStyle(element).bottom)).toBe("34px");
 });
 
+test("ordinary attached-footer input editing keeps the keyboard active", async ({ page }) => {
+  await page.goto("/tests/runtime-fixture.html?fixture=keyboard");
+  const input = page.getByLabel("Message");
+  const keyboard = page.getByTestId("keyboard-dock");
+
+  await input.click();
+  await input.pressSequentially("Draft message");
+  await expect(input).toHaveValue("Draft message");
+  await expect(keyboard).toHaveAttribute("data-visible", "true");
+});
+
 test("switching to Pixel keeps the composer above Android navigation", async ({ page }) => {
   await page.goto("/tests/runtime-fixture.html?fixture=keyboard");
   const input = page.getByLabel("Message");
