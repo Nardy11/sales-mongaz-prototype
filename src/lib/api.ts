@@ -41,3 +41,5 @@ export type ManagerWorkspace={priorities:Array<{id:string;title:string;reason:st
 export const managerWorkspace=()=>request<ManagerWorkspace>("/api/manager/workspace");
 export const createManagerPriority=(csrf:string,input:Record<string,unknown>)=>request<any>("/api/manager/priorities",{method:"POST",headers:{"x-csrf-token":csrf},body:JSON.stringify(input)});
 export const decideManagerPriority=(id:string,csrf:string,input:Record<string,unknown>)=>request<any>(`/api/manager/priorities/${id}/decisions`,{method:"POST",headers:{"x-csrf-token":csrf},body:JSON.stringify(input)});
+export type ManagerReport={definitionStatus:"TEST_DEMO";periodStart:string;periodEnd:string;metrics:Array<{metricKey:string;displayName:string;definitionStatus:"TEST_DEMO";value:number;unit:string;evidenceIds:string[];source:string;timeBoundary:string;target?:{id:string;definitionId:string;value:string;unit:string;periodStart:string;periodEnd:string;version:number;definitionStatus:"TEST_DEMO"}|null}>};
+export const managerReport=(start:string,end:string)=>request<ManagerReport>(`/api/manager/reports?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);

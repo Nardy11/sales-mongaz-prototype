@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyboardTextarea } from "../../mobile";
 import { CommitmentRail, CommitmentRailItem, LedgerRow, NextActionHero, StatePanel, StatusLabel } from "../../design-system/foundation";
-import { decideManagerPriority, managerWorkspace, type SessionIdentity } from "../../lib/api";
+import { decideManagerPriority, managerReport, managerWorkspace, type SessionIdentity } from "../../lib/api";
 
 const labels: Record<string, string> = { open: "مفتوحة", actioned: "قرار مسجل — العمل مستمر", resolved: "مكتملة", decision: "قرار إداري", resolve: "حل فعلي" };
 const date = (value?: string) => value ? new Intl.DateTimeFormat("ar-EG", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "—";
@@ -13,6 +13,18 @@ export function ManagerWorkspace({ session }: { session: SessionIdentity }) {
   const [evidence, setEvidence] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const query = useQuery({ queryKey: ["manager"], queryFn: managerWorkspace });
+  const [reportOffset, setReportOffset] = useState(0);
+  const reportPeriod = (() => {
+    const now = new Date();
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1 + reportOffset));
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - 1);
+    return { start: start.toISOString(), end: end.toISOString() };
+  })();
+  const report = useQuery({
+    queryKey: ["manager", "report", reportPeriod.start, reportPeriod.end],
+    queryFn: () => managerReport(reportPeriod.start, reportPeriod.end),
+  });
   const mutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) => decideManagerPriority(id, session.csrfToken, body),
     onSuccess: () => { setEvidence(""); setNotice("تم حفظ القرار وتحديث الأدلة؛ العمل لا يُغلق تلقائياً."); client.invalidateQueries({ queryKey: ["manager"] }); },
@@ -37,5 +49,21 @@ export function ManagerWorkspace({ session }: { session: SessionIdentity }) {
       {priority.decisionEvidence && <><LedgerRow label={"قرار الإدارة: " + (labels[priority.decisionKind ?? ""] ?? priority.decisionKind)} detail={priority.decisionEvidence + " · " + (priority.decisionActorName ?? "مسؤول مسجل")} />{priority.followUpAt && <LedgerRow label="موعد المتابعة الناتجة" detail={date(priority.followUpAt)} />}{priority.resultingCommitment && <CommitmentRail><CommitmentRailItem state="caution" time={date(priority.followUpAt)} title="التزام متابعة ناتج محفوظ" meta={"معرّف الالتزام: " + priority.resultingCommitment.id + " · القرار لا يغلق العمل"} /></CommitmentRail>}</>}
       {priority.operationallyOpen && <><label>دليل قرار المدير<KeyboardTextarea value={evidence} onChange={event => setEvidence(event.target.value)} /></label><div className="supervisor-actions"><button className="production-secondary" onClick={() => save("decision")}>تسجيل قرار ومتابعة</button><button className="production-primary" onClick={() => save("resolve")}>تسجيل حل فعلي</button></div></>}
     </section>}
+    <section aria-label="التقارير التشغيلية" className="manager-reporting">
+      <h2>التقارير التشغيلية</h2>
+      <p>TEST_DEMO — تعريفات وتهيئة توضيحية وليست مؤشرات أعمال معتمدة.</p>
+      <div className="supervisor-actions">
+        <button className="production-secondary" onClick={() => setReportOffset(value => value - 1)}>الفترة السابقة</button>
+        <button className="production-secondary" onClick={() => setReportOffset(value => value + 1)}>الفترة التالية</button>
+      </div>
+      <p>الفترة المطلوبة: {date(reportPeriod.start)} — {date(reportPeriod.end)} · UTC [start, end)</p>
+      {report.isLoading ? <StatePanel kind="loading" title="جارٍ تحميل التقرير" detail="يتم جلب الأدلة والقيم الفعلية من السجل التشغيلي." />
+        : report.isError ? <StatePanel kind="error" title="تعذر تحميل التقرير" detail="أعد المحاولة لجلب التقرير من الخادم." retry={() => report.refetch()} />
+        : report.data!.metrics.length === 0 ? <StatePanel kind="empty" title="لا توجد تعريفات تقرير ضمن نطاقك" detail="لا توجد بيانات تقرير متاحة للفترة المطلوبة." />
+          : report.data!.metrics.map(metric => <div className="manager-reporting-metric" key={metric.metricKey}>
+            <LedgerRow label={metric.displayName} detail={`القيمة الفعلية من الأدلة المحفوظة: ${metric.value} · ${metric.evidenceIds.length ? `معرّفات الأدلة: ${metric.evidenceIds.join("، ")}` : "لا توجد أدلة في الفترة المطلوبة"}`} status={<StatusLabel attention="caution">TEST_DEMO</StatusLabel>} />
+            {metric.target ? <p>تهيئة هدف TEST_DEMO: {metric.target.value} {metric.target.unit} · الإصدار {metric.target.version} · {date(metric.target.periodStart)} — {date(metric.target.periodEnd)}</p> : <p>لا يوجد هدف TEST_DEMO محفوظ لهذه الفترة.</p>}
+          </div>)}
+    </section>
   </section>;
 }

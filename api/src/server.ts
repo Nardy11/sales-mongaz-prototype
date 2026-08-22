@@ -10,6 +10,7 @@ import { OrderLifecycleService } from "./order-lifecycle";
 import { ComplaintLifecycleService } from "./complaint-lifecycle";
 import { SupervisorService } from "./supervisor";
 import { ManagerService } from "./manager";
+import { ReportingService } from "./reporting";
 const password = process.env.SALES_BOOTSTRAP_PASSWORD ?? "Phase0-password!";
 const fallbackRepository = new InMemoryIdentityRepository([{ id: "employee-rep-1", email: "rep@local.test", displayName: "موظف مبيعات", passwordHash: await hashPassword(password), role: "sales_representative", teamId: "team-sales-1", active: true }]);
 const persistent = process.env.DATABASE_URL ? connectIdentityRepository(process.env.DATABASE_URL) : null;
@@ -21,6 +22,7 @@ const orders = salesSql && persistent && sales ? new OrderLifecycleService(sales
 const complaints = salesSql && persistent && sales ? new ComplaintLifecycleService(salesSql,new AuditService(persistent.repository),sales) : undefined;
 const supervisor = salesSql && persistent && sales ? new SupervisorService(salesSql,new AuditService(persistent.repository),sales) : undefined;
 const manager = salesSql && persistent && sales ? new ManagerService(salesSql,new AuditService(persistent.repository),sales) : undefined;
-const app = await createApi({ repository: persistent?.repository ?? fallbackRepository, sales, representative, telesales, orders, complaints, supervisor, manager, allowedOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173" });
+const reporting = salesSql && persistent ? new ReportingService(salesSql,new AuditService(persistent.repository)) : undefined;
+const app = await createApi({ repository: persistent?.repository ?? fallbackRepository, sales, representative, telesales, orders, complaints, supervisor, manager, reporting, allowedOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173" });
 app.addHook("onClose", async () => { await persistent?.close(); });
 await app.listen({ host: "127.0.0.1", port: Number(process.env.API_PORT ?? 8787) });
