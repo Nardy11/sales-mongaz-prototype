@@ -1,0 +1,16 @@
+import { createApi } from "./app";
+import { hashPassword } from "./password";
+import { connectIdentityRepository, InMemoryIdentityRepository } from "./repository";
+import postgres from "postgres";
+import { CustomerCommitmentService } from "./customer-commitment";
+import { AuditService } from "./audit";
+import { RepresentativeService } from "./representative";
+const password = process.env.SALES_BOOTSTRAP_PASSWORD ?? "Phase0-password!";
+const fallbackRepository = new InMemoryIdentityRepository([{ id: "employee-rep-1", email: "rep@local.test", displayName: "موظف مبيعات", passwordHash: await hashPassword(password), role: "sales_representative", teamId: "team-sales-1", active: true }]);
+const persistent = process.env.DATABASE_URL ? connectIdentityRepository(process.env.DATABASE_URL) : null;
+const salesSql = process.env.DATABASE_URL ? postgres(process.env.DATABASE_URL) : null;
+const sales = persistent && salesSql ? new CustomerCommitmentService(salesSql, new AuditService(persistent.repository)) : undefined;
+const representative = sales && salesSql ? new RepresentativeService(salesSql, new AuditService(persistent!.repository), sales) : undefined;
+const app = await createApi({ repository: persistent?.repository ?? fallbackRepository, sales, representative, allowedOrigin: process.env.WEB_ORIGIN ?? "http://localhost:5173" });
+app.addHook("onClose", async () => { await persistent?.close(); });
+await app.listen({ host: "127.0.0.1", port: Number(process.env.API_PORT ?? 8787) });
