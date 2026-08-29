@@ -9,6 +9,8 @@ import {
   StatePanel,
 } from "../../design-system/foundation";
 import { ActivityCalendar, type ActivityEvidence } from "../../design-system/ActivityCalendar";
+import { CustomerRegister } from "../customers/CustomerCore";
+import { customerClassificationLabel } from "../../lib/presentation";
 import {
   completeTelesalesCall,
   startTelesalesCall,
@@ -21,7 +23,6 @@ import {
   type SessionIdentity,
 } from "../../lib/api";
 import "./telesales.css";
-import { customerClassificationLabel } from "../../lib/presentation";
 const label: Record<string, string> = {
   supervisor_priority: "أولوية المشرف",
   collection: "وعد سداد",
@@ -169,6 +170,10 @@ export function TelesalesWorkspace({
           <section className="artifact4-precall" aria-label="ملخص ما قبل الاتصال">
             <div><small>جهة الاتصال</small><strong>{call.contactName || "غير مسجل"}</strong></div>
             <div><small>الهاتف</small><strong dir="ltr">{call.phone || "—"}</strong></div>
+            <div><small>تصنيف العميل</small><strong>{call.classification ? customerClassificationLabel(call.classification) : "غير مسجل"}</strong></div>
+            <div><small>الحالة التشغيلية</small><strong>{call.operationalStatus || "غير مسجلة"} · {call.isActive ? "نشط" : "غير نشط"}</strong></div>
+            <div><small>السياق المفتوح</small><strong>{call.openOrders ?? 0} طلب · {call.openComplaints ?? 0} شكوى</strong></div>
+            <div><small>المدينة</small><strong>{call.city || "غير مسجلة"}</strong></div>
             <p>{call.operationalNotes || "لا توجد ملاحظات تشغيلية إضافية."}</p>
           </section>
           <CommitmentRail>
@@ -281,7 +286,7 @@ export function TelesalesWorkspace({
           ))}</div>
         </section>
       ) : tab === "customers" ? (
-        <Customers onOpen={onCustomer} />
+        <CustomerRegister onOpen={onCustomer} session={session} />
       ) : (
         <section className="artifact4-call-queue">
           {queue.data?.length ? <>
@@ -334,12 +339,16 @@ function Capture({
     [amount, setAmount] = useState(""),
     [due, setDue] = useState(""),
     [note, setNote] = useState(""),
+    [classification, setClassification] = useState(""),
+    [responsibleParty, setResponsibleParty] = useState(""),
+    [requiredAction, setRequiredAction] = useState(""),
+    [opportunityKind, setOpportunityKind] = useState(""),
     [override, setOverride] = useState(false),
     [error, setError] = useState("");
   const products = useQuery({
     queryKey: ["tp"],
     queryFn: telesalesProducts,
-    enabled: purpose === "routine" || purpose === "supervisor_priority",
+    enabled: purpose === "routine" || purpose === "supervisor_priority" || purpose === "opportunity",
   });
   let kind = "";
   if (outcome === "payment_promise") kind = "collection";
@@ -362,6 +371,10 @@ function Capture({
         throw new Error("المبلغ وموعد الوعد مطلوبان.");
       if (kind === "reactivation" && !due)
         throw new Error("موعد المتابعة مطلوب.");
+      if (kind === "complaint" && (!classification || !responsibleParty || !requiredAction || !due || note.trim().length < 2))
+        throw new Error("تصنيف الشكوى والمسؤول والإجراء والموعد والدليل مطلوبة.");
+      if (kind === "opportunity" && (!opportunityKind || !due || note.trim().length < 2))
+        throw new Error("نوع الفرصة وموعد المتابعة والدليل مطلوبة.");
       const input: any =
         kind === "order"
           ? {
@@ -383,13 +396,13 @@ function Capture({
               }
             : kind === "complaint"
               ? {
-                  classification: "general",
-                  description: note || "شكوى مسجلة",
-                  responsibleParty: "فريق خدمة العملاء",
-                  requiredAction: "متابعة الشكوى",
-                  evidence: note || "شكوى مسجلة",
+                  classification,
+                  description: note,
+                  responsibleParty,
+                  requiredAction,
+                  evidence: note,
                   followUpTitle: "متابعة شكوى",
-                  followUpDueAt: new Date(Date.now() + 86400000).toISOString(),
+                  followUpDueAt: new Date(due).toISOString(),
                 }
               : kind === "reactivation"
                 ? {
@@ -398,13 +411,12 @@ function Capture({
                     dueAt: new Date(due).toISOString(),
                   }
                 : {
-                    kind: "cross_sell",
-                    note: note || "فرصة مسجلة",
-                    evidence: note || "فرصة مسجلة",
+                    kind: opportunityKind,
+                    productReference: product || undefined,
+                    note,
+                    evidence: note,
                     followUpTitle: "متابعة فرصة",
-                    followUpDueAt: new Date(
-                      Date.now() + 86400000,
-                    ).toISOString(),
+                    followUpDueAt: new Date(due).toISOString(),
                   };
       await telesalesCapture(callId, kind as any, csrf, input);
       await onSaved(
@@ -472,6 +484,36 @@ function Capture({
           onChange={(e) => setDue(e.target.value)}
         />
       )}
+      {kind === "complaint" && (
+        <>
+          <select value={classification} onChange={(event) => setClassification(event.target.value)}>
+            <option value="">تصنيف الشكوى</option>
+            <option value="product">المنتج</option>
+            <option value="delivery">التسليم</option>
+            <option value="service">الخدمة</option>
+            <option value="billing">المطالبة/الحساب</option>
+            <option value="other">أخرى</option>
+          </select>
+          <KeyboardInput value={responsibleParty} onChange={(event) => setResponsibleParty(event.target.value)} placeholder="الطرف المسؤول" />
+          <KeyboardInput value={requiredAction} onChange={(event) => setRequiredAction(event.target.value)} placeholder="الإجراء المطلوب" />
+          <KeyboardInput type="datetime-local" value={due} onChange={(event) => setDue(event.target.value)} aria-label="موعد متابعة الشكوى" />
+        </>
+      )}
+      {kind === "opportunity" && (
+        <>
+          <select value={opportunityKind} onChange={(event) => setOpportunityKind(event.target.value)}>
+            <option value="">نوع الفرصة</option>
+            <option value="cross_sell">بيع تكميلي</option>
+            <option value="upsell">ترقية/زيادة</option>
+            <option value="new_need">احتياج جديد</option>
+          </select>
+          <select value={product} onChange={(event) => setProduct(event.target.value)}>
+            <option value="">مرجع منتج اختياري</option>
+            {(products.data ?? []).map((item) => <option key={item.id} value={item.referenceCode}>{item.name}</option>)}
+          </select>
+          <KeyboardInput type="datetime-local" value={due} onChange={(event) => setDue(event.target.value)} aria-label="موعد متابعة الفرصة" />
+        </>
+      )}
       <KeyboardTextarea
         value={note}
         onChange={(e) => setNote(e.target.value)}
@@ -482,29 +524,5 @@ function Capture({
       </button>
       {error && <p>{error}</p>}
     </fieldset>
-  );
-}
-function Customers({ onOpen }: { onOpen: (id: string) => void }) {
-  const q = useQuery({
-    queryKey: ["customers"],
-    queryFn: () => import("../../lib/api").then((x) => x.customers()),
-  });
-  return (
-    <section className="artifact4-customers">
-      <div className="artifact4-section-title"><span />العملاء داخل نطاقك</div>
-      {q.isLoading ? <StatePanel kind="loading" title="جارٍ تحميل العملاء" detail="يتم جلب سجل العملاء المصرح به."/> : q.isError ? <StatePanel kind="error" title="تعذر تحميل العملاء" detail="أعد المحاولة لجلب سجل العملاء." retry={() => void q.refetch()}/> : q.data?.length ? q.data.map((c) => (
-        <button
-          className="telesales-row"
-          key={c.id}
-          onClick={() => onOpen(c.id)}
-        >
-          <LedgerRow
-            label={c.name}
-            detail={`${customerClassificationLabel(c.classification)} · ${c.openCommitments} التزامات`}
-            status={<span className="artifact4-customer-open">فتح الملف ‹</span>}
-          />
-        </button>
-      )) : <StatePanel kind="empty" title="لا يوجد عملاء" detail="لا يوجد عملاء داخل نطاق الوصول المصرح به."/>}
-    </section>
   );
 }

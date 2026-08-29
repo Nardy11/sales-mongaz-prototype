@@ -37,6 +37,9 @@ test("manager workspace is organization-scoped and exposes canonical open Superv
   const f = await fixture("workspace");
   const work = await manager.workspace(f.actor);
   assert.ok(work.priorities.some((priority) => priority.id === f.priorityId && priority.operationallyOpen));
+  assert.ok(work.teams.some((team) => team.id === f.rep.teamId));
+  const scopedTeamIds = new Set((await sql<any[]>`SELECT id FROM teams WHERE organization_id=${f.actor.organizationId}`).map((team) => team.id));
+  assert.ok(work.teams.every((team) => scopedTeamIds.has(team.id)));
   await assert.rejects(() => manager.workspace({ ...f.actor, organizationId: randomUUID() }), { statusCode: 403 });
   await assert.rejects(() => manager.workspace({ ...f.actor, role: "sales_representative" }), { statusCode: 403 });
 });

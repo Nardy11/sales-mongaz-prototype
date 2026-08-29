@@ -4,6 +4,7 @@ import { KeyboardInput, KeyboardTextarea, useKeyboard } from "../../mobile";
 import { captureOperational, completeVisit, createOrder, representativeActivity, representativeDay, representativeProducts, startVisit, type SessionIdentity } from "../../lib/api";
 import { LedgerRow, NextActionHero, StatePanel, StatusLabel } from "../../design-system/foundation";
 import { ActivityCalendar } from "../../design-system/ActivityCalendar";
+import { customerClassificationLabel } from "../../lib/presentation";
 import "./representative.css";
 
 const egp=(value:number)=>new Intl.NumberFormat("ar-EG",{style:"currency",currency:"EGP",maximumFractionDigits:0}).format(Number(value)||0);
@@ -30,6 +31,7 @@ export function RepresentativeWorkspace({session,activeTab}:{session:SessionIden
  const [competitor,setCompetitor]=useState("");
  const [competitorPrice,setCompetitorPrice]=useState("");
  const [duplicateOverride,setDuplicateOverride]=useState(false);
+ const [requiresCreditReview,setRequiresCreditReview]=useState(false);
  const [captureNotice,setCaptureNotice]=useState<string|null>(null);
  const [captureSaving,setCaptureSaving]=useState(false);
  const [inspection,setInspection]=useState<string|null>(null);
@@ -46,7 +48,7 @@ export function RepresentativeWorkspace({session,activeTab}:{session:SessionIden
 
  const day=q.data!,current=day.visits.find(v=>v.id===selected),close=day.close;
  const start=async(id:string)=>{try{setActionError(null);await startVisit(id,session.csrfToken);await refresh();}catch(cause){setActionError(cause instanceof Error?cause.message:"تعذر بدء الزيارة.");}};
- const resetExecution=()=>{setOutcome("");setEvidence("");setFollowUpTitle("");setFollowUpDue("");setCaptureKind("");setCaptureNote("");setCaptureDue("");setProductId("");setQuantity("1");setAmount("");setClassification("");setResponsibleParty("");setCompetitor("");setCompetitorPrice("");setDuplicateOverride(false);setCaptureNotice(null);};
+ const resetExecution=()=>{setOutcome("");setEvidence("");setFollowUpTitle("");setFollowUpDue("");setCaptureKind("");setCaptureNote("");setCaptureDue("");setProductId("");setQuantity("1");setAmount("");setClassification("");setResponsibleParty("");setCompetitor("");setCompetitorPrice("");setDuplicateOverride(false);setRequiresCreditReview(false);setCaptureNotice(null);};
  const complete=async()=>{if(!current)return;keyboard.hide();try{setActionError(null);await completeVisit(current.id,session.csrfToken,{outcome,evidence,followUpTitle:followUpTitle||undefined,followUpDueAt:followUpDue?new Date(followUpDue).toISOString():undefined});setSelected(null);resetExecution();await refresh();}catch(cause){setActionError(cause instanceof Error?cause.message:"تعذر حفظ نتيجة الزيارة.");}};
  const saveCapture=async()=>{
    if(!current||!captureKind)return;
@@ -55,7 +57,7 @@ export function RepresentativeWorkspace({session,activeTab}:{session:SessionIden
      if(captureNote.trim().length<2)throw new Error("يلزم تسجيل دليل واضح للعمل الناتج.");
      if(captureKind==="order"){
        if(!productId||Number(quantity)<=0)throw new Error("اختر منتجًا وأدخل كمية موجبة.");
-       await createOrder(session.csrfToken,{customerId:current.customerId,visitId:current.id,productId,quantity:Number(quantity),requestNote:captureNote,requiresCreditReview:true,duplicateOverrideReason:duplicateOverride?"تأكيد المندوب لتسجيل الطلب المكرر":undefined});
+       await createOrder(session.csrfToken,{customerId:current.customerId,visitId:current.id,productId,quantity:Number(quantity),requestNote:captureNote,requiresCreditReview,duplicateOverrideReason:duplicateOverride?"تأكيد المندوب لتسجيل الطلب المكرر":undefined});
      }else if(captureKind==="collection"){
        if(Number(amount)<0)throw new Error("أدخل مبلغًا صالحًا.");
        const promise=!!captureDue;
@@ -72,7 +74,7 @@ export function RepresentativeWorkspace({session,activeTab}:{session:SessionIden
        await captureOperational("observation",session.csrfToken,{customerId:current.customerId,visitId:current.id,observationType:classification,competitor:competitor||undefined,competitorPrice:competitorPrice?Number(competitorPrice):undefined,productReference:productId||undefined,note:captureNote,evidence:captureNote});
      }
      setCaptureNotice(captureKind==="complaint"?"تم تسجيل الشكوى كعمل مفتوح؛ التسجيل لا يعني الحل.":"تم حفظ العمل الناتج في السجل التشغيلي.");
-     setCaptureKind("");setCaptureNote("");setCaptureDue("");setProductId("");setQuantity("1");setAmount("");setClassification("");setResponsibleParty("");setCompetitor("");setCompetitorPrice("");setDuplicateOverride(false);
+     setCaptureKind("");setCaptureNote("");setCaptureDue("");setProductId("");setQuantity("1");setAmount("");setClassification("");setResponsibleParty("");setCompetitor("");setCompetitorPrice("");setDuplicateOverride(false);setRequiresCreditReview(false);
      await refresh();
    }catch(cause){const message=cause instanceof Error?cause.message:"تعذر حفظ العمل الناتج.";if(message.includes("recent order")&&!duplicateOverride){setDuplicateOverride(true);setActionError("يوجد طلب حديث لنفس العميل والمنتج. راجع الطلب ثم أكّد التجاوز صراحة.");}else setActionError(message);}finally{setCaptureSaving(false);}
  };
@@ -101,6 +103,12 @@ export function RepresentativeWorkspace({session,activeTab}:{session:SessionIden
  if(current&&activeTab==="day")return <section className="artifact1-execution" aria-label="تنفيذ زيارة">
    <button className="customer-back" onClick={()=>{keyboard.hide();setSelected(null);resetExecution();}}>رجوع إلى اليوم</button>
    <NextActionHero eyebrow="تنفيذ زيارة" title={current.customerName} detail={current.purpose}/>
+   <section className="artifact1-customer-snapshot" aria-label="سياق العميل قبل الزيارة">
+     <div className="artifact1-snapshot-heading"><span><small>سياق العميل قبل التنفيذ</small><strong>{customerClassificationLabel(current.classification)} · {current.isActive ? "نشط" : "غير نشط"}</strong></span><StatusLabel attention={current.operationalStatus === "risk" ? "urgent" : current.operationalStatus === "attention" ? "caution" : "normal"}>{current.operationalStatus === "risk" ? "مخاطر" : current.operationalStatus === "attention" ? "يحتاج انتباه" : "طبيعي"}</StatusLabel></div>
+     <div className="artifact1-snapshot-grid"><span><b>{current.openOrders}</b><small>طلبات مفتوحة</small></span><span><b>{current.openCommitments}</b><small>متابعات مفتوحة</small></span><span><b>{current.openComplaints}</b><small>شكاوى غير مغلقة</small></span></div>
+     <p>{current.contactName || "لا يوجد مسؤول اتصال"} · <span dir="ltr">{current.phone || "—"}</span> · {current.city || "بدون مدينة"}</p>
+     <p>{current.operationalNotes || "لا توجد ملاحظات تشغيلية إضافية."}</p>
+   </section>
    <div className="artifact1-context-strip" aria-label="سياق الزيارة">
      <span>زيارة ميدانية</span><i>•</i><span>قيد التنفيذ الآن</span><i>•</i><span>الدليل مطلوب للإكمال</span>
    </div>
@@ -110,7 +118,7 @@ export function RepresentativeWorkspace({session,activeTab}:{session:SessionIden
    </section>
    <section className="artifact1-outcome-section">
      <h2>ما الذي حدث؟</h2>
-     <label className="artifact1-ledger-field"><span>النتيجة التشغيلية</span><KeyboardTextarea value={outcome} onChange={e=>setOutcome(e.target.value)} placeholder="اكتب ما حدث لدى العميل"/></label>
+     <label className="artifact1-ledger-field"><span>النتيجة التشغيلية</span><select value={outcome} onChange={e=>setOutcome(e.target.value)}><option value="">اختر نتيجة الزيارة</option><option value="order_recorded">تم تسجيل طلب</option><option value="opportunity">فرصة بيع تحتاج متابعة</option><option value="follow_up">متابعة في موعد محدد</option><option value="issue">مشكلة تحتاج تدخلًا</option><option value="no_need">لا يوجد احتياج الآن</option><option value="inactive_customer">عميل متوقف</option><option value="new_customer">عميل جديد / زيارة تعريفية</option></select></label>
    </section>
    <section className="artifact1-outcome-section">
      <h2>الدليل أو النتيجة</h2>
@@ -123,7 +131,7 @@ export function RepresentativeWorkspace({session,activeTab}:{session:SessionIden
        {([['order','طلبية'],['collection','تحصيل / وعد'],['complaint','شكوى'],['opportunity','فرصة بيع'],['observation','ملاحظة سوق']] as const).map(([id,label])=><button key={id} className={captureKind===id?"active":""} aria-pressed={captureKind===id} onClick={()=>{setCaptureKind(captureKind===id?"":id);setActionError(null);setCaptureNotice(null);setClassification("");}}>{label}</button>)}
      </div>
      {captureKind&&<div className="artifact1-capture-form">
-       {captureKind==="order"&&<><label>المنتج<select value={productId} onChange={e=>setProductId(e.target.value)}><option value="">اختر المنتج</option>{(products.data??[]).map(product=><option value={product.id} key={product.id}>{product.name}</option>)}</select></label><label>الكمية<KeyboardInput type="number" min="1" value={quantity} onChange={e=>setQuantity(e.target.value)}/></label></>}
+       {captureKind==="order"&&<><label>المنتج<select value={productId} onChange={e=>setProductId(e.target.value)}><option value="">اختر المنتج</option>{(products.data??[]).map(product=><option value={product.id} key={product.id}>{product.name}</option>)}</select></label><label>الكمية<KeyboardInput type="number" min="1" value={quantity} onChange={e=>setQuantity(e.target.value)}/></label><label className="artifact1-credit-review"><input type="checkbox" checked={requiresCreditReview} onChange={event=>setRequiresCreditReview(event.target.checked)}/><span><b>يتطلب مراجعة ائتمانية</b><small>فعّلها فقط عندما يلزم مرور الطلب بمراجعة الحسابات الداخلية.</small></span></label></>}
        {captureKind==="collection"&&<><label>المبلغ المحصل أو مبلغ الوعد<KeyboardInput type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)}/></label><label>موعد وعد جديد — اتركه فارغًا للتحصيل الفعلي<KeyboardInput type="datetime-local" value={captureDue} onChange={e=>setCaptureDue(e.target.value)}/></label></>}
        {captureKind==="complaint"&&<><label>تصنيف المشكلة<select value={classification} onChange={e=>setClassification(e.target.value)}><option value="">اختر التصنيف</option><option value="delivery_delay">تأخير توصيل</option><option value="quality">جودة</option><option value="pricing">تسعير</option><option value="service">خدمة</option></select></label><label>الجهة المسؤولة<select value={responsibleParty} onChange={e=>setResponsibleParty(e.target.value)}><option value="">اختر المسؤول</option><option value="خدمة العملاء">خدمة العملاء</option><option value="التوزيع">التوزيع</option><option value="الجودة">الجودة</option><option value="المبيعات">المبيعات</option></select></label><label>موعد المتابعة<KeyboardInput type="datetime-local" value={captureDue} onChange={e=>setCaptureDue(e.target.value)}/></label></>}
        {captureKind==="opportunity"&&<><label>نوع الفرصة<select value={classification} onChange={e=>setClassification(e.target.value)}><option value="">اختر النوع</option><option value="cross_sell">بيع إضافي</option><option value="new_product">منتج جديد</option><option value="expansion">توسّع العميل</option></select></label><label>منتج مرتبط — اختياري<select value={productId} onChange={e=>setProductId(e.target.value)}><option value="">بدون منتج محدد</option>{(products.data??[]).map(product=><option value={product.referenceCode} key={product.id}>{product.name}</option>)}</select></label><label>موعد المتابعة<KeyboardInput type="datetime-local" value={captureDue} onChange={e=>setCaptureDue(e.target.value)}/></label></>}

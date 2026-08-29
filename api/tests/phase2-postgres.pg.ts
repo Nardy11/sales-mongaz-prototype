@@ -306,7 +306,17 @@ test("Representative cannot change customer classification while Supervisor can 
 
 test("Manager customer detail follows organization scope while Supervisor remains team-scoped", async () => {
   const { actor } = await run();
-  const manager = await repo.findEmployeeByEmail("manager@local.test");
+  const manager = (
+    await sql<any[]>`
+      SELECT id,organization_id AS "organizationId",team_id AS "teamId"
+      FROM employees
+      WHERE organization_id=${actor.organizationId}
+        AND role='sales_manager'
+        AND active=true
+      ORDER BY created_at,id
+      LIMIT 1
+    `
+  )[0];
   assert.ok(manager);
   const foreignTeamId = randomUUID();
   const foreignOwnerId = randomUUID();

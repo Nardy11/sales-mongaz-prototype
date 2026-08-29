@@ -22,6 +22,7 @@ async function shellFixture(page: any) {
     }
     if (path === "/api/auth/logout") { current = null; return send({}, 204); }
     if (path === "/api/profile" && current) return send({ ...current, email: Object.entries(identities).find(([, identity]) => identity.id === current!.id)?.[0], active: true, dateOfBirth: null, avatarDataUrl: null });
+    if (path === "/api/notifications") return send(current?.role === "sales_representative" ? [{ id: "visit:visit-shell", title: "زيارة تحتاج تنفيذًا", detail: "TEST Scoped Customer · تغطية", attention: "normal", at: "2026-08-29T09:00:00Z", sourceType: "visit", sourceId: "visit-shell", customerId: "customer-shell" }] : []);
     if (path === "/api/customers") return send([{ id: "customer-shell", name: "TEST Scoped Customer", customerCode: "SHELL-1", classification: "gold", operationalStatus: "normal", isActive: true, openCommitments: 1 }]);
     if (path === "/api/customers/customer-shell") return send({ customer: { id: "customer-shell", name: "TEST Scoped Customer", customerCode: "SHELL-1", classification: "gold", operationalStatus: "normal", isActive: true, openCommitments: 1 }, commitments: [], orders: [], complaints: [] });
     if (path === "/api/representative/day") return send({ visits: [], commitments: [], close: { plannedVisits: 0, completedVisits: 0, customersVisited: 0, orders: 0, orderValue: 0, collections: 0, collectedAmount: 0, paymentPromises: 0, promiseAmount: 0, complaints: 0, opportunities: 0, observations: 0, reactivations: 0, openFollowUps: 0, carriedForward: 0 } });
@@ -64,7 +65,8 @@ test("header search, notifications, status guide, and brand profile entry are fu
   await expect(page.getByText("TEST Scoped Customer")).toBeVisible();
   await page.getByRole("button", { name: "إغلاق" }).click();
   await page.getByRole("button", { name: "الإشعارات" }).click();
-  await expect(page.getByText("لا توجد إشعارات جديدة")).toBeVisible();
+  await expect(page.getByText("زيارة تحتاج تنفيذًا")).toBeVisible();
+  await expect(page.getByText(/تنبيه تشغيلي مشتق من السجل/)).toBeVisible();
   await page.getByRole("button", { name: "إغلاق" }).click();
   await page.getByRole("button", { name: "دليل حالات الواجهة" }).click();
   await expect(page.getByRole("dialog", { name: "دليل حالات الواجهة" })).toBeVisible();

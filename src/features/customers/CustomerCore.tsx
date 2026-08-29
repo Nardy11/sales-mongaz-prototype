@@ -4,6 +4,7 @@ import "./customer-core.css";
 import {
   captureOperational,
   complaintLifecycle,
+  createCustomer,
   customerFile,
   customers,
   initiateReactivation,
@@ -65,8 +66,50 @@ const format = (value?: string | null) =>
         timeStyle: "short",
       }).format(new Date(value))
     : "—";
-export function CustomerRegister({ onOpen }: { onOpen: (id: string) => void }) {
+export function CustomerRegister({ onOpen, session }: { onOpen: (id: string) => void; session?: SessionIdentity }) {
+  const qc = useQueryClient();
   const q = useQuery({ queryKey: ["customers"], queryFn: customers });
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [customerCode, setCustomerCode] = useState("");
+  const [classification, setClassification] = useState("follow_up");
+  const [contactName, setContactName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("");
+  const [address, setAddress] = useState("");
+  const [operationalNotes, setOperationalNotes] = useState("");
+  const canCreate = session?.employee.role === "sales_representative" || session?.employee.role === "telesales_employee";
+  const saveCustomer = async () => {
+    if (!session || name.trim().length < 2) {
+      setError("اسم العميل مطلوب بحرفين على الأقل.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await createCustomer(session.csrfToken, {
+        name: name.trim(),
+        customerCode: customerCode.trim() || undefined,
+        classification,
+        operationalStatus: "attention",
+        isActive: true,
+        contactName: contactName.trim() || undefined,
+        phone: phone.trim() || undefined,
+        city: city.trim() || undefined,
+        address: address.trim() || undefined,
+        operationalNotes: operationalNotes.trim() || undefined,
+      });
+      await qc.invalidateQueries({ queryKey: ["customers"] });
+      setCreating(false);
+      onOpen(result.id);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "تعذر تسجيل العميل.");
+    } finally {
+      setSaving(false);
+    }
+  };
   if (q.isLoading)
     return (
       <StatePanel
@@ -84,18 +127,28 @@ export function CustomerRegister({ onOpen }: { onOpen: (id: string) => void }) {
         retry={() => q.refetch()}
       />
     );
-  if (!q.data?.length)
-    return (
-      <StatePanel
-        kind="empty"
-        title="لا يوجد عملاء ضمن نطاقك"
-        detail="لا توجد سجلات تشغيلية متاحة."
-      />
-    );
   return (
     <section className="artifact2-customer-register">
-      <h2>عملاؤك</h2>
-      <div className="artifact2-register-list">
+      <div className="artifact2-register-heading">
+        <div><small>سجل تشغيلي مصرح به</small><h2>عملاؤك</h2></div>
+        {canCreate && <button type="button" className="production-secondary" aria-expanded={creating} onClick={() => { setCreating(!creating); setError(null); }}>+ تسجيل عميل</button>}
+      </div>
+      {creating && <section className="artifact2-create-customer" aria-label="تسجيل عميل جديد">
+        <div className="artifact2-create-title"><strong>فتح سجل عميل جديد</strong><small>البيانات تُحفظ في سجل العملاء الحقيقي وتُسند إلى حسابك.</small></div>
+        <label>اسم العميل<KeyboardInput value={name} onChange={event => setName(event.target.value)} placeholder="الاسم التجاري أو اسم العميل" /></label>
+        <div className="artifact2-create-grid">
+          <label>كود العميل — اختياري<KeyboardInput value={customerCode} onChange={event => setCustomerCode(event.target.value)} /></label>
+          <label>التصنيف<select value={classification} onChange={event => setClassification(event.target.value)}><option value="gold">ذهبي</option><option value="silver">فضي</option><option value="follow_up">يحتاج متابعة</option></select></label>
+          <label>مسؤول الاتصال<KeyboardInput value={contactName} onChange={event => setContactName(event.target.value)} /></label>
+          <label>الهاتف<KeyboardInput inputMode="tel" value={phone} onChange={event => setPhone(event.target.value)} /></label>
+          <label>المدينة<KeyboardInput value={city} onChange={event => setCity(event.target.value)} /></label>
+          <label>العنوان<KeyboardInput value={address} onChange={event => setAddress(event.target.value)} /></label>
+        </div>
+        <label>سياق تشغيلي أولي<KeyboardTextarea value={operationalNotes} onChange={event => setOperationalNotes(event.target.value)} placeholder="سبب الفتح، الاحتياج، أو مصدر الفرصة" /></label>
+        {error && <StatePanel kind="error" title="تعذر تسجيل العميل" detail={error} />}
+        <button type="button" className="production-primary" disabled={saving || name.trim().length < 2} onClick={() => void saveCustomer()}>{saving ? "جارٍ الحفظ…" : "حفظ وفتح ملف العميل"}</button>
+      </section>}
+      {!q.data?.length ? <StatePanel kind="empty" title="لا يوجد عملاء ضمن نطاقك" detail={canCreate ? "يمكنك فتح أول سجل عميل من الزر أعلاه." : "لا توجد سجلات تشغيلية متاحة."} /> : <div className="artifact2-register-list">
         {q.data.map((c) => {
           const state = !c.isActive
             ? "inactive"
@@ -130,7 +183,7 @@ export function CustomerRegister({ onOpen }: { onOpen: (id: string) => void }) {
             </button>
           );
         })}
-      </div>
+      </div>}
     </section>
   );
 }

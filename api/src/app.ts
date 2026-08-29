@@ -196,6 +196,116 @@ export const createApi = async ({
     teamId: request.auth!.employee.teamId,
     role: request.auth!.employee.role,
   });
+  app.get(
+    "/api/notifications",
+    { preHandler: requireAuth },
+    async (request: any, reply) => {
+      const identity = actor(request);
+      if (identity.role === "sales_representative") {
+        if (!representative)
+          return reply.code(503).send({ error: "SALES_STORE_UNAVAILABLE" });
+        const day = await representative.day(identity);
+        const commitment = day.commitments.find(
+          (item: any) => new Date(item.dueAt).getTime() < Date.now(),
+        );
+        if (commitment)
+          return [
+            {
+              id: `commitment:${commitment.id}`,
+              title: "متابعة تجاوزت موعدها",
+              detail: commitment.title,
+              attention: "urgent",
+              at: commitment.dueAt,
+              sourceType: "commitment",
+              sourceId: commitment.id,
+            },
+          ];
+        const visit = day.visits.find((item: any) => item.status !== "completed");
+        return visit
+          ? [
+              {
+                id: `visit:${visit.id}`,
+                title: "زيارة تحتاج تنفيذًا",
+                detail: `${visit.customerName} · ${visit.purpose}`,
+                attention: "normal",
+                at: visit.plannedAt,
+                sourceType: "visit",
+                sourceId: visit.id,
+                customerId: visit.customerId,
+              },
+            ]
+          : [];
+      }
+      if (identity.role === "telesales_employee") {
+        if (!telesales)
+          return reply.code(503).send({ error: "SALES_STORE_UNAVAILABLE" });
+        const next = (await telesales.queue(identity))[0];
+        return next
+          ? [
+              {
+                id: `telesales_call:${next.id}`,
+                title: "المكالمة التالية جاهزة",
+                detail: `${next.customerName} · ${next.priorityReason}`,
+                attention: [
+                  "supervisor_priority",
+                  "collection",
+                  "complaint_followup",
+                ].includes(next.purpose)
+                  ? "urgent"
+                  : "normal",
+                at: next.scheduledAt,
+                sourceType: "telesales_call",
+                sourceId: next.id,
+                customerId: next.customerId,
+              },
+            ]
+          : [];
+      }
+      if (identity.role === "telesales_supervisor") {
+        if (!supervisor)
+          return reply.code(503).send({ error: "SALES_STORE_UNAVAILABLE" });
+        const next = (await supervisor.workspace(identity)).exceptions.find(
+          (item: any) => item.operationallyOpen,
+        );
+        return next
+          ? [
+              {
+                id: `supervisor_exception:${next.id}`,
+                title: "استثناء يحتاج متابعة المشرف",
+                detail: `${next.summary} · ${next.requiredNextAction}`,
+                attention: next.severity === "urgent" ? "urgent" : "caution",
+                at: next.createdAt,
+                sourceType: "supervisor_exception",
+                sourceId: next.id,
+              },
+            ]
+          : [];
+      }
+      if (identity.role === "sales_manager") {
+        if (!manager)
+          return reply.code(503).send({ error: "SALES_STORE_UNAVAILABLE" });
+        const workspace = await manager.workspace(identity);
+        const next = workspace.priorities.find(
+          (item: any) => item.operationallyOpen,
+        );
+        return next
+          ? [
+              {
+                id: `manager_priority:${next.id}`,
+                title: "أولوية إدارية ما زالت مفتوحة",
+                detail: `${next.title} · ${next.reason}`,
+                attention: next.urgency,
+                at: next.dueAt,
+                sourceType: "manager_priority",
+                sourceId: next.id,
+                customerId: next.customerId,
+              },
+            ]
+          : [];
+      }
+      return [];
+    },
+  );
   const salesReady = (reply: any) => {
     if (!sales) {
       reply

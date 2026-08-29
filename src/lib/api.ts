@@ -33,6 +33,18 @@ export const logout = (csrfToken: string) =>
     method: "POST",
     headers: { "x-csrf-token": csrfToken },
   });
+export type WorkspaceNotification = {
+  id: string;
+  title: string;
+  detail: string;
+  attention: "normal" | "caution" | "urgent";
+  at?: string | null;
+  sourceType: string;
+  sourceId: string;
+  customerId?: string | null;
+};
+export const workspaceNotifications = () =>
+  request<WorkspaceNotification[]>("/api/notifications");
 export type AccountProfile = {
   id: string;
   displayName: string;
@@ -97,6 +109,15 @@ export type CustomerFile = {
   observations: Array<{id:string;competitor?:string|null;productReference?:string|null;competitorPrice?:string|null;offer?:string|null;observationType:string;note:string;observedAt:string}>;
 };
 export const customers = () => request<CustomerRow[]>("/api/customers");
+export const createCustomer = (
+  csrfToken: string,
+  input: Record<string, unknown>,
+) =>
+  request<{ id: string; name: string }>("/api/customers", {
+    method: "POST",
+    headers: { "x-csrf-token": csrfToken },
+    body: JSON.stringify(input),
+  });
 export const searchCustomers = (query: string) =>
   request<CustomerRow[]>(`/api/customers?q=${encodeURIComponent(query)}`);
 export const customerFile = (id: string) =>
@@ -120,6 +141,16 @@ export type RepDay = {
     purpose: string;
     status: string;
     outcome?: string;
+    classification: string;
+    operationalStatus: string;
+    isActive: boolean;
+    contactName?: string | null;
+    phone?: string | null;
+    city?: string | null;
+    operationalNotes?: string | null;
+    openComplaints: number;
+    openOrders: number;
+    openCommitments: number;
   }>;
   commitments: Array<{
     id: string;
@@ -245,9 +276,15 @@ export type TelesalesCall = {
 };
 export type TelesalesDetail = {
   call: TelesalesCall & {
+    classification?: string;
+    operationalStatus?: string;
+    isActive?: boolean;
     contactName?: string;
     phone?: string;
+    city?: string;
     operationalNotes?: string;
+    openComplaints?: number;
+    openOrders?: number;
   };
   attempts: Array<{
     outcome: string;
@@ -412,6 +449,16 @@ export const supervisorCoaching = (
     body: JSON.stringify(input),
   });
 export type ManagerWorkspace = {
+  teams: Array<{
+    id: string;
+    name: string;
+    activeEmployees: number;
+    completedVisits: number;
+    completedCalls: number;
+    queuedCalls: number;
+    openExceptions: number;
+    openCommitments: number;
+  }>;
   priorities: Array<{
     id: string;
     customerId?: string;

@@ -23,6 +23,7 @@ When implementing from a selected generated mock, treat that image as the source
 - In the device runtime, workspace navigation must scroll only the owned `MobileScroll` viewport; never use global `scrollIntoView`, which can move fixed shell chrome or leave the keyboard open.
 - The login brand panel must use the exact supplied EES company artwork from Figma node `2:2`, via `public/assets/brand/ees-logo.svg`; do not replace it with a text mark or an approximation.
 - Activity is a dedicated, interactive evidence-calendar view inspired by Figma node `3:122`, not a shortcut that scrolls another workspace section. Activity colors represent the density of canonical persisted evidence only; they must not invent targets, attainment, or performance judgments.
+- Manager morning, midday, and end-of-day checkpoints are interactive views over the same canonical operational evidence. In Telesales, leaving Today must clear selected-call presentation state so My Work, Customers, and Activity cannot be trapped behind a stale call. Header notifications must be derived from role-scoped canonical work rather than becoming a parallel source of operational truth.
 
 ## Editing Boundary
 

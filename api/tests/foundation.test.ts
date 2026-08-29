@@ -206,3 +206,38 @@ test("profile is authenticated, CSRF-protected, persisted, and audited", async (
   );
   await app.close();
 });
+test("notification example is authenticated and derived from the role-scoped canonical day service", async () => {
+  const repository = new InMemoryIdentityRepository([
+    {
+      id: "rep-notification",
+      email: "notification@local.test",
+      displayName: "TEST Representative",
+      passwordHash: await hashPassword("Phase0-password!"),
+      role: "sales_representative",
+      teamId: "team-1",
+      active: true,
+    },
+  ]);
+  let actors: any[] = [];
+  const app = await createApi({
+    repository,
+    representative: {
+      day: async (actor: any) => {
+        actors.push(actor);
+        return {
+          visits: [{ id: "visit-1", customerId: "customer-1", customerName: "TEST Customer", purpose: "coverage", status: "planned", plannedAt: "2026-08-29T09:00:00.000Z" }],
+          commitments: [],
+          close: {},
+        };
+      },
+    } as any,
+  });
+  assert.equal((await app.inject({ url: "/api/notifications" })).statusCode, 401);
+  const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: { email: "notification@local.test", password: "Phase0-password!" } });
+  const response = await app.inject({ url: "/api/notifications", headers: { cookie: sessionCookieHeader(login) } });
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json(), [{ id: "visit:visit-1", title: "زيارة تحتاج تنفيذًا", detail: "TEST Customer · coverage", attention: "normal", at: "2026-08-29T09:00:00.000Z", sourceType: "visit", sourceId: "visit-1", customerId: "customer-1" }]);
+  assert.equal(actors[0].id, "rep-notification");
+  assert.equal(actors[0].role, "sales_representative");
+  await app.close();
+});

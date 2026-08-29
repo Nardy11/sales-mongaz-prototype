@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const initial = {
+  teams: [{ id: "team-1", name: "TEST Sales Team", activeEmployees: 4, completedVisits: 3, completedCalls: 7, queuedCalls: 2, openExceptions: 1, openCommitments: 5 }],
   exceptions: [{ id: "exception-1", customerId: "customer-1", summary: "TEST canonical Supervisor exception", evidence: "TEST canonical source evidence", severity: "urgent", status: "open", createdAt: "2026-08-29T08:00:00Z", ownerName: "TEST owner", requiredNextAction: "TEST required action" }],
   priorities: [{ id: "priority-1", title: "TEST Manager priority", reason: "TEST reason", successCondition: "TEST success condition", evidence: "TEST priority evidence", dueAt: "2026-08-30T09:00:00Z", createdAt: "2026-08-29T09:00:00Z", urgency: "urgent", status: "open", version: 1, ownerName: "TEST owner", operationallyOpen: true }]
 };
@@ -30,6 +31,24 @@ test("Manager route is RTL and renders canonical exception evidence with priorit
   await expect(page.getByText("TEST canonical Supervisor exception")).toBeVisible();
   await expect(page.getByText("TEST canonical source evidence")).toBeVisible();
   await expect(page.getByText("TEST success condition")).toBeVisible();
+});
+test("Manager morning, midday, and end-of-day checkpoints are interactive evidence views", async ({ page }) => {
+  await fixture(page);
+  await page.getByRole("button", { name: "منتصف اليوم" }).click();
+  await expect(page.getByRole("button", { name: "منتصف اليوم" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("أين انحرف التنفيذ عن خطة اليوم؟")).toBeVisible();
+  await expect(page.getByText("قرارات مسجلة والعمل مستمر")).toBeVisible();
+  await page.getByRole("button", { name: "نهاية اليوم" }).click();
+  await expect(page.getByRole("button", { name: "نهاية اليوم" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("ما الذي سيظل مفتوحًا دون متابعة واضحة؟")).toBeVisible();
+  await expect(page.getByText("أولويات لم تُغلق فعليًا")).toBeVisible();
+});
+test("Manager review renders organization-scoped team execution from canonical work", async ({ page }) => {
+  await fixture(page);
+  await expect(page.getByText("تنفيذ الفرق")).toBeVisible();
+  await expect(page.getByText("TEST Sales Team")).toBeVisible();
+  await expect(page.getByText("4 موظف نشط · 3 زيارة مكتملة · 7 مكالمة مكتملة · 2 مكالمة متبقية")).toBeVisible();
+  await expect(page.getByText("1 استثناء · 5 التزام مفتوح")).toBeVisible();
 });
 test("Manager promotes canonical Supervisor evidence into a persisted priority",async({page})=>{const control=await fixture(page,[{body:initial},{body:created}]);await page.getByRole("button",{name:"تسجيل كأولوية"}).click();await expect.poll(control.reads).toBe(2);await expect(page.getByRole("button",{name:"مسجلة كأولوية"})).toBeDisabled();expect(control.writes[0]).toMatchObject({path:"/api/manager/priorities",body:{customerId:"customer-1",sourceType:"supervisor_exception",sourceId:"exception-1",title:"TEST canonical Supervisor exception",reason:"TEST required action",successCondition:"اكتمال العمل التشغيلي الناتج مع دليل محفوظ",evidence:"TEST canonical source evidence",urgency:"urgent"}});expect(control.writes[0].body.idempotencyKey).toBeTruthy();});
 

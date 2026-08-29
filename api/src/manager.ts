@@ -45,6 +45,17 @@ export class ManagerService {
     const exceptions = await this.sql<
       any[]
     >`SELECT x.id,x.customer_id AS "customerId",x.kind,x.severity,x.summary,x.evidence,x.required_next_action AS "requiredNextAction",x.status,x.created_at AS "createdAt",x.source_type AS "sourceType",x.source_id AS "sourceId",e.display_name AS "ownerName",c.name AS "customerName" FROM supervisor_exceptions x LEFT JOIN employees e ON e.id=x.subject_employee_id LEFT JOIN customers c ON c.id=x.customer_id WHERE x.organization_id=${actor.organizationId} AND x.status<>'resolved' ORDER BY CASE x.severity WHEN 'urgent' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,x.created_at DESC`;
+    const teams = await this.sql<any[]>`
+      SELECT t.id,t.name,
+        (SELECT count(*)::int FROM employees e WHERE e.team_id=t.id AND e.active=true) AS "activeEmployees",
+        (SELECT count(*)::int FROM visits v JOIN employees e ON e.id=v.representative_id WHERE e.team_id=t.id AND v.organization_id=t.organization_id AND v.status='completed' AND v.completed_at::date=current_date) AS "completedVisits",
+        (SELECT count(*)::int FROM telesales_calls c JOIN employees e ON e.id=c.owner_employee_id WHERE e.team_id=t.id AND c.organization_id=t.organization_id AND c.state IN ('completed','escalated') AND c.completed_at::date=current_date) AS "completedCalls",
+        (SELECT count(*)::int FROM telesales_calls c JOIN employees e ON e.id=c.owner_employee_id WHERE e.team_id=t.id AND c.organization_id=t.organization_id AND c.state='queued' AND c.scheduled_at::date=current_date) AS "queuedCalls",
+        (SELECT count(*)::int FROM supervisor_exceptions x WHERE x.team_id=t.id AND x.organization_id=t.organization_id AND x.status<>'resolved') AS "openExceptions",
+        (SELECT count(*)::int FROM commitments c JOIN employees e ON e.id=c.owner_employee_id WHERE e.team_id=t.id AND c.organization_id=t.organization_id AND c.status='open') AS "openCommitments"
+      FROM teams t
+      WHERE t.organization_id=${actor.organizationId}
+      ORDER BY t.name`;
     return {
       priorities: priorities.map((p) => ({
         ...p,
@@ -54,6 +65,7 @@ export class ManagerService {
         operationallyOpen: open(p.status),
       })),
       exceptions,
+      teams,
     };
   }
   async create(actor: Actor, input: PriorityInput, correlationId: string) {

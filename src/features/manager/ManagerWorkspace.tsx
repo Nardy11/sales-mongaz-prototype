@@ -284,6 +284,18 @@ export function ManagerWorkspace({
           الأرقام مشتقة من الأدلة التشغيلية المحفوظة وليست مؤشرات أداء معتمدة.
         </p>
       </section>
+      <section className="artifact5-team-execution" hidden={activeTab !== "review"} aria-label="تنفيذ الفرق">
+        <h2>تنفيذ الفرق</h2>
+        {(workspace.teams ?? []).length ? (workspace.teams ?? []).map((team) => (
+          <LedgerRow
+            key={team.id}
+            label={team.name}
+            detail={`${team.activeEmployees} موظف نشط · ${team.completedVisits} زيارة مكتملة · ${team.completedCalls} مكالمة مكتملة · ${team.queuedCalls} مكالمة متبقية`}
+            status={<StatusLabel attention={team.openExceptions ? "urgent" : team.openCommitments ? "caution" : "success"}>{team.openExceptions} استثناء · {team.openCommitments} التزام مفتوح</StatusLabel>}
+          />
+        )) : <StatePanel kind="empty" title="لا توجد فرق ضمن النطاق" detail="لا توجد أدلة تنفيذ فرق متاحة ضمن نطاق المؤسسة المصادق عليه." />}
+        <p>عرض تشغيلي مشتق من الزيارات والمكالمات والاستثناءات والالتزامات المحفوظة؛ لا ينشئ حقائق موازية.</p>
+      </section>
       <section hidden={activeTab !== "review"}>
         <h2>استثناءات تحتاج قراراً</h2>
         {workspace.exceptions.length ? (
