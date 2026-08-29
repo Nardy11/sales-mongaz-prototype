@@ -1,0 +1,164 @@
+/* Artifact 1 — call execution follows the same ruled operating ledger as visits. */
+.telesales-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.telesales-tabs {
+  display: none;
+}
+
+/* Artifact 4 — today is a written call plan, not a card dashboard. */
+.artifact4-call-queue{display:flex;flex-direction:column}.artifact4-queue-intro{display:grid;gap:4px;padding:20px 4px 18px;text-align:right}.artifact4-queue-intro p{margin:0;color:var(--brass);font-size:11px;font-weight:700}.artifact4-queue-intro strong{font-family:Tajawal,"Noto Sans Arabic",sans-serif;font-size:16px;line-height:1.35;color:var(--ink-900)}.artifact4-queue-intro span{font-size:12px;line-height:1.55;color:var(--ink-400)}.artifact4-queue-note{margin:0 0 4px;padding:10px 12px;border-radius:8px;background:var(--stamp-bg);color:var(--caution);font-size:11.5px;line-height:1.55}.artifact4-call-queue>h2{margin-top:24px}.artifact4-queue-list{display:flex;flex-direction:column;border-top:1px solid var(--rule)}.artifact4-queue-list .telesales-row{display:flex;align-items:center;gap:10px;min-height:55px;padding:10px 4px;border-bottom:1px solid var(--rule)}.artifact4-queue-chevron{order:2;color:var(--ink-300);font-size:20px;line-height:1}.artifact4-queue-copy{display:grid;flex:1;gap:3px;min-width:0}.artifact4-queue-copy strong{overflow:hidden;color:var(--ink-800);font-family:Tajawal,"Noto Sans Arabic",sans-serif;font-size:13.5px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}.artifact4-queue-copy small{overflow:hidden;color:var(--ink-500);font-size:11.5px;line-height:1.35;text-overflow:ellipsis;white-space:nowrap}
+.telesales-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 -2px 16px;
+  padding: 4px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--canvas-alt);
+}
+.telesales-tabs button {
+  flex: 1;
+  min-height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-500);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.telesales-tabs button:first-child {
+  background: var(--ink-900);
+  color: #fff;
+}
+.telesales-call {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.telesales-call > .ds-hero {
+  margin-bottom: 0;
+}
+.telesales-call > p {
+  margin: 0;
+  padding: 13px 2px 14px;
+  border-bottom: 1px dashed var(--rule);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-500);
+}
+.telesales-call > .ds-rail {
+  margin: 10px 0 0;
+}
+.telesales-call > .production-primary {
+  width: 100%;
+  margin-top: 16px;
+}
+.telesales-call > div:not(.ds-hero):not(.ds-rail) {
+  display: flex;
+  gap: 12px;
+  padding: 14px 2px;
+  border-top: 1px solid var(--rule);
+}
+.telesales-call > div:not(.ds-hero):not(.ds-rail) label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-700);
+}
+.telesales-call > label,
+.telesales-call fieldset {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 15px 2px;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-700);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.telesales-call select,
+.telesales-call input:not([type="checkbox"]),
+.telesales-call textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  border-bottom: 1.5px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 2px;
+  color: var(--ink-900);
+  font: inherit;
+  font-size: 13px;
+  outline: 0;
+}
+.telesales-call textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.telesales-call select:focus,
+.telesales-call input:focus,
+.telesales-call textarea:focus {
+  border-bottom-color: var(--action);
+}
+.telesales-call fieldset {
+  margin-top: 0;
+}
+.telesales-call fieldset legend {
+  padding: 0 0 8px;
+  color: var(--ink-700);
+  font-size: 12px;
+  font-weight: 800;
+}
+.telesales-call fieldset > button {
+  justify-self: start;
+  border: 0;
+  border-radius: 8px;
+  background: var(--canvas-alt);
+  color: var(--action);
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.telesales-call fieldset > p {
+  margin: 0;
+  color: var(--danger);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.telesales-row {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.telesales-row:hover .ds-ledger-row {
+  background: var(--canvas-alt);
+}
+.telesales-row:focus-visible,
+.telesales-tabs button:focus-visible,
+.telesales-call button:focus-visible {
+  outline: 3px solid var(--action);
+  outline-offset: 3px;
+}
+.telesales-workspace > .ds-hero {
+  margin-bottom: 2px;
+}
+.telesales-workspace > .ds-rail {
+  margin-top: 2px;
+}
+.telesales-tabs {
+  display: none;
+}

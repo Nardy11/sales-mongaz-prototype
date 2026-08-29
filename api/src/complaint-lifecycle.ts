@@ -10,10 +10,11 @@ export const isComplaintOperationallyOpen=(complaint:{status:string})=>complaint
 export class ComplaintLifecycleService {
  constructor(private readonly sql:Sql,private readonly audit:AuditService,private readonly commitments:CustomerCommitmentService){}
  private deny(message:string,statusCode=422):never{throw Object.assign(new Error(message),{statusCode});}
- private async complaint(actor:Actor,id:string) {
-  if(actor.role!=="sales_representative")this.deny("Representative role required.",403);
-  const complaint=(await this.sql<any[]>`SELECT c.*,customer.name AS "customerName",customer.owner_employee_id AS "ownerId" FROM complaints c JOIN customers customer ON customer.id=c.customer_id WHERE c.id=${id} AND c.organization_id=${actor.organizationId}`)[0];
-  if(!complaint||complaint.ownerId!==actor.id)this.deny("Complaint is not accessible.",404);
+ private async complaint(actor:Actor,id:string,write=false) {
+  const complaint=(await this.sql<any[]>`SELECT c.*,customer.name AS "customerName",customer.owner_employee_id AS "ownerId",customer.owner_team_id AS "ownerTeamId" FROM complaints c JOIN customers customer ON customer.id=c.customer_id WHERE c.id=${id} AND c.organization_id=${actor.organizationId}`)[0];
+  const readable=!!complaint&&(actor.role==="sales_manager"||(actor.role==="telesales_supervisor"&&actor.teamId!==null&&actor.teamId===complaint.ownerTeamId)||actor.id===complaint.ownerId);
+  if(!readable)this.deny("Complaint is not accessible.",404);
+  if(write&&(actor.role!=="sales_representative"||complaint.ownerId!==actor.id))this.deny("Representative role required.",403);
   return complaint;
  }
  async detail(actor:Actor,id:string) {
@@ -25,7 +26,7 @@ export class ComplaintLifecycleService {
  }
  private expectedNext(status:string):Stage {const index=stages.indexOf(status as Stage);if(index<0||index>=stages.length-1)this.deny("Invalid complaint lifecycle transition.");return stages[index+1];}
  async transition(actor:Actor,id:string,input:{to:Stage;evidence:string;classification?:string;responsibleParty?:string;correctiveAction?:string;followUpAt?:string;followUpTitle?:string;createFollowUp?:boolean;followUpIdempotencyKey?:string;version:number},correlationId:string) {
-  const complaint=await this.complaint(actor,id);
+  const complaint=await this.complaint(actor,id,true);
   if(input.to!==this.expectedNext(complaint.status)||!input.evidence)this.deny("Invalid complaint lifecycle transition.");
   if(input.to==="classified"&&!input.classification)this.deny("Classification is required.");
   if(input.to==="assigned"&&!input.responsibleParty)this.deny("A responsible party is required.");

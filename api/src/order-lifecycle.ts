@@ -10,10 +10,11 @@ export const isOperationallyOpen=(order:{status:string})=>order.status!=="closed
 export class OrderLifecycleService {
  constructor(private readonly sql:Sql,private readonly audit:AuditService,private readonly commitments:CustomerCommitmentService){}
  private deny(message:string,statusCode=422):never { throw Object.assign(new Error(message),{statusCode}); }
- private async order(actor:Actor,id:string) {
-  if(actor.role!=="sales_representative") this.deny("Representative role required.",403);
-  const order=(await this.sql<any[]>`SELECT o.*,c.name AS "customerName",c.owner_employee_id AS "ownerId" FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=${id} AND o.organization_id=${actor.organizationId}`)[0];
-  if(!order||order.ownerId!==actor.id)this.deny("Order is not accessible.",404);
+ private async order(actor:Actor,id:string,write=false) {
+  const order=(await this.sql<any[]>`SELECT o.*,c.name AS "customerName",c.owner_employee_id AS "ownerId",c.owner_team_id AS "ownerTeamId" FROM sales_orders o JOIN customers c ON c.id=o.customer_id WHERE o.id=${id} AND o.organization_id=${actor.organizationId}`)[0];
+  const readable=!!order&&(actor.role==="sales_manager"||(actor.role==="telesales_supervisor"&&actor.teamId!==null&&actor.teamId===order.ownerTeamId)||actor.id===order.ownerId);
+  if(!readable)this.deny("Order is not accessible.",404);
+  if(write&&(actor.role!=="sales_representative"||order.ownerId!==actor.id))this.deny("Representative role required.",403);
   return order;
  }
  async detail(actor:Actor,id:string) {
@@ -31,7 +32,7 @@ export class OrderLifecycleService {
   return stages[index+1];
  }
  async transition(actor:Actor,id:string,input:{to:Stage;evidence:string;responsibleParty?:string;followUpAt?:string;version:number},correlationId:string) {
-  const order=await this.order(actor,id);
+  const order=await this.order(actor,id,true);
   if(order.blocked_reason)this.deny("Clear the order block before advancing its lifecycle.",409);
   const expected=this.expectedNext(order);
   if(input.to!==expected||!input.evidence||(input.to==="closed"&&!input.responsibleParty))this.deny("Invalid order lifecycle transition.");
@@ -44,7 +45,7 @@ export class OrderLifecycleService {
   return this.detail(actor,id);
  }
  async block(actor:Actor,id:string,input:{reason:string;responsibleParty:string;requiredNextAction:string;evidence:string;followUpAt?:string;createFollowUp?:boolean;followUpIdempotencyKey?:string;version:number},correlationId:string) {
-  const order=await this.order(actor,id);
+  const order=await this.order(actor,id,true);
   if(order.status==="closed"||order.blocked_reason||!input.reason||!input.responsibleParty||!input.requiredNextAction||!input.evidence||(input.createFollowUp&&!input.followUpAt))this.deny("Invalid order blocking data.");
   return this.sql.begin(async tx=>{
    const updated=(await tx<any[]>`UPDATE sales_orders SET blocked_reason=${input.reason},responsible_party=${input.responsibleParty},required_next_action=${input.requiredNextAction},follow_up_at=${input.followUpAt?new Date(input.followUpAt):null},version=version+1,updated_at=now() WHERE id=${id} AND version=${input.version} RETURNING id,version`)[0];
@@ -57,7 +58,7 @@ export class OrderLifecycleService {
   });
  }
  async unblock(actor:Actor,id:string,input:{evidence:string;version:number},correlationId:string) {
-  const order=await this.order(actor,id);
+  const order=await this.order(actor,id,true);
   if(!order.blocked_reason||!input.evidence)this.deny("Order is not blocked.");
   return this.sql.begin(async tx=>{
    const updated=(await tx<any[]>`UPDATE sales_orders SET blocked_reason=null,required_next_action=null,follow_up_at=null,version=version+1,updated_at=now() WHERE id=${id} AND version=${input.version} RETURNING id,version`)[0];

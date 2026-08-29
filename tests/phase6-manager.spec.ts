@@ -1,25 +1,27 @@
 import { expect, test } from "@playwright/test";
 
 const initial = {
-  exceptions: [{ id: "exception-1", summary: "TEST canonical Supervisor exception", evidence: "TEST canonical source evidence", severity: "urgent", status: "open", ownerName: "TEST owner", requiredNextAction: "TEST required action" }],
-  priorities: [{ id: "priority-1", title: "TEST Manager priority", reason: "TEST reason", successCondition: "TEST success condition", evidence: "TEST priority evidence", dueAt: "2026-08-23T09:00:00Z", urgency: "urgent", status: "open", version: 1, ownerName: "TEST owner", operationallyOpen: true }]
+  exceptions: [{ id: "exception-1", customerId: "customer-1", summary: "TEST canonical Supervisor exception", evidence: "TEST canonical source evidence", severity: "urgent", status: "open", createdAt: "2026-08-29T08:00:00Z", ownerName: "TEST owner", requiredNextAction: "TEST required action" }],
+  priorities: [{ id: "priority-1", title: "TEST Manager priority", reason: "TEST reason", successCondition: "TEST success condition", evidence: "TEST priority evidence", dueAt: "2026-08-30T09:00:00Z", createdAt: "2026-08-29T09:00:00Z", urgency: "urgent", status: "open", version: 1, ownerName: "TEST owner", operationallyOpen: true }]
 };
 const actioned = { ...initial, priorities: [{ ...initial.priorities[0], status: "actioned", version: 2, decisionKind: "decision", decisionEvidence: "TEST manager decision evidence", decisionActorName: "TEST Manager", followUpAt: "2026-08-24T09:00:00Z", resultingCommitment: { id: "commitment-manager-1" }, operationallyOpen: true }] };
 const resolved = { ...initial, priorities: [{ ...initial.priorities[0], status: "resolved", version: 2, decisionKind: "resolve", decisionEvidence: "TEST completion evidence", decisionActorName: "TEST Manager", operationallyOpen: false }] };
+const created = { ...initial, priorities: [...initial.priorities, { id: "priority-created", customerId: "customer-1", sourceType: "supervisor_exception", sourceId: "exception-1", title: "TEST canonical Supervisor exception", reason: "TEST required action", successCondition: "اكتمال العمل التشغيلي الناتج مع دليل محفوظ", evidence: "TEST canonical source evidence", dueAt: "2026-08-30T10:00:00Z", createdAt: "2026-08-29T10:00:00Z", urgency: "urgent", status: "open", version: 1, ownerName: "TEST Manager", operationallyOpen: true }] };
 
 async function fixture(page: any, responses: Array<{ body: unknown; status?: number; delay?: number }> = [{ body: initial }]) {
-  let logged = false; let reads = 0;
+  let logged = false; let reads = 0; const writes:Array<{path:string;body:any}>=[];
   await page.route("**/api/**", async (route: any) => {
     const path = new URL(route.request().url()).pathname; const method = route.request().method();
     const send = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/auth/me") return logged ? send({ employee: { id: "manager", displayName: "TEST Manager", role: "sales_manager" }, csrfToken: "csrf" }) : send({}, 401);
     if (path === "/api/auth/login") { logged = true; return send({ employee: { id: "manager", displayName: "TEST Manager", role: "sales_manager" }, csrfToken: "csrf" }); }
     if (path === "/api/manager/workspace") { const response = responses[Math.min(reads++, responses.length - 1)]; if (response.delay) await new Promise(resolve => setTimeout(resolve, response.delay)); return send(response.body, response.status ?? 200); }
-    if (method === "POST" && path.includes("/api/manager/priorities/")) return send({ id: "priority-1", commitmentId: "commitment-manager-1", operationallyOpen: true, version: 2 });
+    if (method === "POST" && path === "/api/manager/priorities") { writes.push({path,body:route.request().postDataJSON()}); return send({id:"priority-created",replayed:false},201); }
+    if (method === "POST" && path.includes("/api/manager/priorities/")) { writes.push({path,body:route.request().postDataJSON()}); return send({ id: "priority-1", commitmentId: "commitment-manager-1", operationallyOpen: true, version: 2 }); }
     return send({}, 404);
   });
   await page.goto("/login"); await page.locator("input").nth(1).fill("Phase0-password!"); await page.locator("form button").click(); await expect(page).toHaveURL(/manager/);
-  return { reads: () => reads };
+  return { reads: () => reads, writes };
 }
 
 test("Manager route is RTL and renders canonical exception evidence with priority success condition", async ({ page }) => {
@@ -29,6 +31,7 @@ test("Manager route is RTL and renders canonical exception evidence with priorit
   await expect(page.getByText("TEST canonical source evidence")).toBeVisible();
   await expect(page.getByText("TEST success condition")).toBeVisible();
 });
+test("Manager promotes canonical Supervisor evidence into a persisted priority",async({page})=>{const control=await fixture(page,[{body:initial},{body:created}]);await page.getByRole("button",{name:"تسجيل كأولوية"}).click();await expect.poll(control.reads).toBe(2);await expect(page.getByRole("button",{name:"مسجلة كأولوية"})).toBeDisabled();expect(control.writes[0]).toMatchObject({path:"/api/manager/priorities",body:{customerId:"customer-1",sourceType:"supervisor_exception",sourceId:"exception-1",title:"TEST canonical Supervisor exception",reason:"TEST required action",successCondition:"اكتمال العمل التشغيلي الناتج مع دليل محفوظ",evidence:"TEST canonical source evidence",urgency:"urgent"}});expect(control.writes[0].body.idempotencyKey).toBeTruthy();});
 
 test("Manager decision requires evidence, refetches persisted consequence, and remains operationally open", async ({ page }) => {
   const control = await fixture(page, [{ body: initial }, { body: actioned }]);
@@ -72,4 +75,13 @@ test("Manager workspace renders an empty state without fabricated priorities or 
   await expect(page.getByText("لا توجد استثناءات")).toBeVisible();
   await expect(page.getByText("لا توجد أولويات", { exact: true })).toBeVisible();
   await expect(page.getByText("TEST Manager priority")).toHaveCount(0);
+});
+
+test("Manager Activity calendar renders canonical priority and exception evidence", async ({ page }) => {
+  await fixture(page);
+  await page.locator(".production-nav button").nth(3).click();
+  await expect(page.getByText("تقويم النشاط الإداري")).toBeVisible();
+  await page.locator('.activity-calendar__day[aria-label*="2 أدلة محفوظة"]').click();
+  await expect(page.locator(".activity-calendar__details")).toContainText("TEST Manager priority");
+  await expect(page.locator(".activity-calendar__details")).toContainText("TEST canonical Supervisor exception");
 });

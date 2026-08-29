@@ -14,7 +14,7 @@ async function open(page: any, reports: Array<{ body: unknown; status?: number; 
     if (path === "/api/manager/reports") { requests.push(url.search); const response = reports[Math.min(read++, reports.length - 1)]; if (response.delay) await new Promise(resolve => setTimeout(resolve, response.delay)); return send(response.body, response.status ?? 200); }
     return send({}, 404);
   });
-  await page.goto("/login"); await page.locator("input").nth(1).fill("Phase0-password!"); await page.locator("form button").click(); await expect(page).toHaveURL(/manager/);
+  await page.goto("/login"); await page.locator("input").nth(1).fill("Phase0-password!"); await page.locator("form button").click(); await expect(page).toHaveURL(/manager/); const reportsTab=page.locator(".production-nav button").nth(3); await reportsTab.focus(); await page.keyboard.press("Enter");
   return { requests };
 }
 
@@ -29,5 +29,5 @@ test("Manager reporting has real loading, retryable error, no-target and zero-ev
   await page.setViewportSize({ width: 427, height: 952 });
   await open(page, [{ body: base("TEST delayed", [], null), delay: 300 }, { body: { message: "TEST reporting error" }, status: 500 }, { body: { message: "TEST reporting error" }, status: 500 }, { body: { message: "TEST reporting error" }, status: 500 }, { body: { message: "TEST reporting error" }, status: 500 }, { body: base("TEST zero evidence", [], null) }]);
   await expect(page.locator(".ds-state--loading").last()).toBeVisible(); await expect(page.getByText("TEST delayed")).toBeVisible(); await expect(page.getByText(/لا يوجد هدف TEST_DEMO/)).toBeVisible(); await expect(page.getByText(/لا توجد أدلة/)).toBeVisible();
-  await page.getByRole("button", { name: "الفترة التالية" }).click(); await expect(page.locator(".ds-state--error")).toBeVisible({ timeout: 15_000 }); await page.getByRole("button", { name: "إعادة المحاولة" }).click(); await expect(page.getByText("TEST zero evidence")).toBeVisible(); await expect(page.locator("html")).toHaveAttribute("dir", "rtl"); expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy();
+  const nextPeriod=page.getByRole("button", { name: "الفترة التالية" }); await nextPeriod.focus(); await page.keyboard.press("Enter"); await expect(page.locator(".ds-state--error")).toBeVisible({ timeout: 15_000 }); const retry=page.getByRole("button", { name: "إعادة المحاولة" }); await retry.focus(); await page.keyboard.press("Enter"); await expect(page.getByText("TEST zero evidence")).toBeVisible(); await expect(page.locator("html")).toHaveAttribute("dir", "rtl"); expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBeTruthy();
 });

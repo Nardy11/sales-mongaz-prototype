@@ -3,7 +3,47 @@ const allowed:Record<string,string[]>={collection:["successful_contact","payment
 export class TelesalesService{constructor(private sql:Sql,private audit:AuditService,private commitments:CustomerCommitmentService){}private guard(a:Actor){if(a.role!=="telesales_employee")throw Object.assign(new Error("Telesales role required."),{statusCode:403})}
 async queue(a:Actor){this.guard(a);return this.sql<any[]>`SELECT c.id,c.customer_id AS "customerId",cu.name AS "customerName",c.purpose,c.priority_reason AS "priorityReason",c.scheduled_at AS "scheduledAt",c.state,(SELECT count(*)::int FROM telesales_call_attempts x WHERE x.call_id=c.id AND x.outcome='no_answer' AND x.attempted_at::date=current_date) AS "todayNoAnswers" FROM telesales_calls c JOIN customers cu ON cu.id=c.customer_id WHERE c.owner_employee_id=${a.id} AND c.state='queued' AND c.scheduled_at::date=current_date ORDER BY CASE c.purpose WHEN 'supervisor_priority' THEN 6 WHEN 'collection' THEN 5 WHEN 'complaint_followup' THEN 4 WHEN 'reactivation' THEN 3 WHEN 'opportunity' THEN 2 ELSE 1 END DESC,c.scheduled_at,c.created_at`}
 async day(a:Actor){this.guard(a);return(await this.sql<any[]>`SELECT (SELECT count(*)::int FROM telesales_calls WHERE owner_employee_id=${a.id} AND scheduled_at::date=current_date) planned,(SELECT count(*)::int FROM telesales_calls WHERE owner_employee_id=${a.id} AND completed_at::date=current_date) completed,(SELECT count(*)::int FROM telesales_call_attempts WHERE employee_id=${a.id} AND attempted_at::date=current_date AND outcome='successful_contact') successful,(SELECT count(*)::int FROM telesales_call_attempts WHERE employee_id=${a.id} AND attempted_at::date=current_date AND outcome='no_answer') "noAnswer",(SELECT count(*)::int FROM telesales_call_attempts WHERE employee_id=${a.id} AND attempted_at::date=current_date AND outcome='callback') callbacks,(SELECT count(*)::int FROM telesales_calls WHERE owner_employee_id=${a.id} AND state='escalated' AND completed_at::date=current_date) escalations,(SELECT count(*)::int FROM telesales_calls WHERE owner_employee_id=${a.id} AND state='queued' AND scheduled_at::date>current_date+interval '1 day') "tomorrowCarryover",(SELECT count(*)::int FROM telesales_calls WHERE owner_employee_id=${a.id} AND state='queued' AND scheduled_at::date=current_date) "openWork"`)[0]}
-async activity(a:Actor){this.guard(a);return this.sql<any[]>`SELECT x.id,x.outcome,x.result,x.evidence,x.attempted_at AS "at",c.priority_reason AS "priorityReason",cu.name AS "customerName" FROM telesales_call_attempts x JOIN telesales_calls c ON c.id=x.call_id JOIN customers cu ON cu.id=c.customer_id WHERE x.employee_id=${a.id} ORDER BY x.attempted_at DESC LIMIT 30`}
+async activity(a:Actor){this.guard(a);return this.sql<any[]>`
+  SELECT * FROM (
+    SELECT 'call_attempt:'||x.id::text AS id,x.outcome::text AS outcome,x.result::text AS result,x.evidence,x.attempted_at AS at,c.priority_reason AS "priorityReason",cu.name AS "customerName",'call' AS kind,x.id::text AS "sourceId",
+      concat(cu.name,' — ',x.outcome) AS title,concat(x.result,' · ',x.evidence,' · ',c.priority_reason) AS detail,
+      CASE WHEN x.result='escalated' THEN 'urgent' WHEN x.result='followup' THEN 'caution' ELSE 'success' END AS attention
+    FROM telesales_call_attempts x JOIN telesales_calls c ON c.id=x.call_id JOIN customers cu ON cu.id=c.customer_id
+    WHERE x.organization_id=${a.organizationId} AND x.employee_id=${a.id}
+    UNION ALL
+    SELECT 'order:'||o.id::text,NULL::text,o.status::text,COALESCE(o.request_note,'مرجع الطلب '||o.id::text),o.created_at,NULL::text,c.name,'order',o.id::text,
+      c.name||' — طلب مسجل',concat('طلب · ',o.status::text,' · ',COALESCE(o.request_note,'الدليل محفوظ بالمرجع')),
+      CASE WHEN o.blocked_reason IS NOT NULL THEN 'urgent' WHEN o.status='closed' THEN 'success' ELSE 'normal' END
+    FROM sales_orders o JOIN customers c ON c.id=o.customer_id
+    WHERE o.organization_id=${a.organizationId} AND o.recorded_by_employee_id=${a.id}
+    UNION ALL
+    SELECT 'collection:'||x.id::text,x.outcome::text,x.outcome::text,x.evidence,x.created_at,NULL::text,c.name,'collection',x.id::text,
+      c.name||' — تحصيل / وعد',concat(x.outcome,' · ',x.evidence),
+      CASE WHEN x.outcome IN ('promise','no_collection') THEN 'caution' ELSE 'success' END
+    FROM collection_outcomes x JOIN customers c ON c.id=x.customer_id
+    WHERE x.organization_id=${a.organizationId} AND x.representative_id=${a.id}
+    UNION ALL
+    SELECT 'complaint:'||x.id::text,NULL::text,x.status::text,x.description,x.created_at,NULL::text,c.name,'complaint',x.id::text,
+      c.name||' — شكوى',concat(x.classification,' · ',x.status::text,' · ',x.description),
+      CASE WHEN x.status='closed' THEN 'success' ELSE 'urgent' END
+    FROM complaints x JOIN customers c ON c.id=x.customer_id
+    WHERE x.organization_id=${a.organizationId} AND x.recorded_by_employee_id=${a.id}
+    UNION ALL
+    SELECT 'opportunity:'||x.id::text,NULL::text,x.status,x.note,x.created_at,NULL::text,c.name,'opportunity',x.id::text,
+      c.name||' — فرصة',concat(x.kind,' · ',x.status,' · ',x.note),
+      CASE WHEN x.status='won' THEN 'success' ELSE 'normal' END
+    FROM opportunities x JOIN customers c ON c.id=x.customer_id
+    WHERE x.organization_id=${a.organizationId} AND x.owner_employee_id=${a.id}
+    UNION ALL
+    SELECT 'commitment:'||x.id::text,NULL::text,x.status::text,COALESCE(x.completion_evidence,x.source_evidence,'دليل المصدر محفوظ'),COALESCE(x.completed_at,x.created_at),NULL::text,c.name,
+      CASE WHEN x.source_type='reactivation' THEN 'reactivation' ELSE 'commitment' END,x.id::text,c.name||' — '||x.title,
+      concat('التزام · ',x.status::text,' · ',COALESCE(x.completion_evidence,x.source_evidence,'دليل المصدر محفوظ')),
+      CASE WHEN x.status='completed' THEN 'success' WHEN x.due_at<now() THEN 'urgent' ELSE 'caution' END
+    FROM commitments x JOIN customers c ON c.id=x.customer_id
+    WHERE x.organization_id=${a.organizationId} AND x.owner_employee_id=${a.id}
+  ) evidence
+  ORDER BY at DESC LIMIT 120
+`}
 async detail(a:Actor,id:string){this.guard(a);const call=(await this.sql<any[]>`SELECT c.id,c.customer_id AS "customerId",c.purpose,c.priority_reason AS "priorityReason",c.scheduled_at AS "scheduledAt",c.state,cu.name AS "customerName",cu.contact_name AS "contactName",cu.phone,cu.operational_notes AS "operationalNotes" FROM telesales_calls c JOIN customers cu ON cu.id=c.customer_id WHERE c.id=${id} AND c.owner_employee_id=${a.id}`)[0];if(!call)throw Object.assign(new Error("Call is not accessible."),{statusCode:404});const attempts=await this.sql<any[]>`SELECT outcome,result,evidence,attempted_at AS "attemptedAt" FROM telesales_call_attempts WHERE call_id=${id} ORDER BY attempted_at DESC LIMIT 5`;const commitments=await this.sql<any[]>`SELECT id,title,due_at AS "dueAt",status,source_evidence AS evidence FROM commitments WHERE customer_id=${call.customerId} AND owner_employee_id=${a.id} ORDER BY due_at DESC LIMIT 4`;return{call,attempts,commitments,allowedOutcomes:allowed[call.purpose]??allowed.routine}}
 async ensureLive(a:Actor,id:string){this.guard(a);const r=(await this.sql<any[]>`SELECT id,customer_id AS "customerId" FROM telesales_calls WHERE id=${id} AND owner_employee_id=${a.id} AND state='in_progress'`)[0];if(!r)throw Object.assign(new Error("Only an in-progress call can record this outcome."),{statusCode:409});return r}
 async start(a:Actor,id:string,c:string){this.guard(a);const r=(await this.sql<any[]>`UPDATE telesales_calls SET state='in_progress',started_at=now(),updated_at=now(),version=version+1 WHERE id=${id} AND owner_employee_id=${a.id} AND state='queued' RETURNING id`)[0];if(!r)throw Object.assign(new Error("Call cannot be started."),{statusCode:409});await this.audit.record({actorId:a.id,action:"telesales.call_started",resourceType:"telesales_call",resourceId:id,before:{state:"queued"},after:{state:"in_progress"},reason:null,correlationId:c});return r}

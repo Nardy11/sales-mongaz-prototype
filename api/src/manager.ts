@@ -3,13 +3,183 @@ import type { Sql } from "postgres";
 import { AuditService } from "./audit";
 import { CustomerCommitmentService, type Actor } from "./customer-commitment";
 
-type PriorityInput={customerId?:string;sourceType?:string;sourceId?:string;ownerEmployeeId?:string;title:string;reason:string;successCondition:string;evidence:string;dueAt:string;urgency:"normal"|"caution"|"urgent";idempotencyKey:string};
-const open=(status:string)=>status!=="resolved"&&status!=="cancelled";
+type PriorityInput = {
+  customerId?: string;
+  sourceType?: string;
+  sourceId?: string;
+  ownerEmployeeId?: string;
+  title: string;
+  reason: string;
+  successCondition: string;
+  evidence: string;
+  dueAt: string;
+  urgency: "normal" | "caution" | "urgent";
+  idempotencyKey: string;
+};
+const open = (status: string) =>
+  status !== "resolved" && status !== "cancelled";
 export class ManagerService {
-  constructor(private sql:Sql,private audit:AuditService,private commitments:CustomerCommitmentService){}
-  private deny(message:string,statusCode=422):never{throw Object.assign(new Error(message),{statusCode});}
-  private async guard(actor:Actor){if(actor.role!=="sales_manager")this.deny("Sales Manager role required.",403);const row=(await this.sql<any[]>`SELECT id FROM employees WHERE id=${actor.id} AND organization_id=${actor.organizationId} AND role='sales_manager' AND active=true`)[0];if(!row)this.deny("Manager scope is not authorized.",403);}
-  async workspace(actor:Actor){await this.guard(actor);const priorities=await this.sql<any[]>`SELECT p.id,p.title,p.reason,p.success_condition AS "successCondition",p.evidence,p.due_at AS "dueAt",p.urgency,p.status,p.version,p.source_type AS "sourceType",p.source_id AS "sourceId",c.name AS "customerName",e.display_name AS "ownerName",d.kind AS "decisionKind",d.evidence AS "decisionEvidence",d.follow_up_at AS "followUpAt",d.resulting_commitment_id AS "resultingCommitmentId",a.display_name AS "decisionActorName" FROM manager_priorities p LEFT JOIN customers c ON c.id=p.customer_id LEFT JOIN employees e ON e.id=p.owner_employee_id LEFT JOIN LATERAL (SELECT * FROM manager_decisions WHERE priority_id=p.id ORDER BY created_at DESC LIMIT 1) d ON true LEFT JOIN employees a ON a.id=d.actor_employee_id WHERE p.organization_id=${actor.organizationId} ORDER BY CASE p.status WHEN 'open' THEN 0 WHEN 'actioned' THEN 1 ELSE 2 END,CASE p.urgency WHEN 'urgent' THEN 0 WHEN 'caution' THEN 1 ELSE 2 END,p.due_at`;const exceptions=await this.sql<any[]>`SELECT x.id,x.kind,x.severity,x.summary,x.evidence,x.required_next_action AS "requiredNextAction",x.status,x.source_type AS "sourceType",x.source_id AS "sourceId",e.display_name AS "ownerName",c.name AS "customerName" FROM supervisor_exceptions x LEFT JOIN employees e ON e.id=x.subject_employee_id LEFT JOIN customers c ON c.id=x.customer_id WHERE x.organization_id=${actor.organizationId} AND x.status<>'resolved' ORDER BY CASE x.severity WHEN 'urgent' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,x.created_at DESC`;return{priorities:priorities.map(p=>({...p,resultingCommitment:p.resultingCommitmentId?{id:p.resultingCommitmentId}:undefined,operationallyOpen:open(p.status)})),exceptions};}
-  async create(actor:Actor,input:PriorityInput,correlationId:string){await this.guard(actor);const ownerId=input.ownerEmployeeId??actor.id;return this.sql.begin(async tx=>{const owner=(await tx<any[]>`SELECT id,team_id AS "teamId" FROM employees WHERE id=${ownerId} AND organization_id=${actor.organizationId} AND active=true`)[0];if(!owner)this.deny("Priority owner is not authorized.",403);if(input.customerId){const customer=(await tx<any[]>`SELECT id FROM customers WHERE id=${input.customerId} AND organization_id=${actor.organizationId}`)[0];if(!customer)this.deny("Priority customer is not authorized.",403);}if(input.sourceType==="supervisor_exception"&&input.sourceId){const source=(await tx<any[]>`SELECT id FROM supervisor_exceptions WHERE id=${input.sourceId} AND organization_id=${actor.organizationId}`)[0];if(!source)this.deny("Priority source is not authorized.",403);}const existing=(await tx<any[]>`SELECT id FROM manager_priorities WHERE organization_id=${actor.organizationId} AND idempotency_key=${input.idempotencyKey}`)[0];if(existing)return{id:existing.id,replayed:true};const id=randomUUID();await tx`INSERT INTO manager_priorities(id,organization_id,customer_id,source_type,source_id,owner_employee_id,owner_team_id,title,reason,success_condition,evidence,due_at,urgency,idempotency_key) VALUES(${id},${actor.organizationId},${input.customerId??null},${input.sourceType??null},${input.sourceId??null},${ownerId},${owner.teamId},${input.title},${input.reason},${input.successCondition},${input.evidence},${new Date(input.dueAt)},${input.urgency},${input.idempotencyKey})`;await this.audit.recordInTransaction(tx,{actorId:actor.id,action:"manager.priority_created",resourceType:"manager_priority",resourceId:id,before:null,after:input,reason:input.evidence,correlationId});return{id,replayed:false};});}
-  async decide(actor:Actor,id:string,input:{kind:"decision"|"resolve";evidence:string;followUpAt?:string;followUpTitle?:string;idempotencyKey?:string;version:number},correlationId:string){await this.guard(actor);const current=(await this.sql<any[]>`SELECT * FROM manager_priorities WHERE id=${id} AND organization_id=${actor.organizationId}`)[0];if(!current)this.deny("Priority is not accessible.",404);if(current.status==="resolved"||!input.evidence||(input.kind==="decision"&&!input.followUpAt))this.deny("Invalid manager decision.");return this.sql.begin(async tx=>{let commitmentId:string|null=null;if(input.kind==="decision"){if(!current.customer_id)this.deny("A customer-linked priority is required for follow-up.");const c=await this.commitments.createCommitmentInTransaction(tx,actor,{customerId:current.customer_id,ownerEmployeeId:current.owner_employee_id,kind:"follow_up",title:input.followUpTitle??current.title,dueAt:input.followUpAt!,sourceType:"manager_priority",sourceId:id,sourceEvidence:input.evidence,idempotencyKey:input.idempotencyKey??randomUUID()});commitmentId=c.id;}const updated=(await tx<any[]>`UPDATE manager_priorities SET status=${input.kind==="resolve"?"resolved":"actioned"},resulting_commitment_id=${commitmentId},resolved_at=${input.kind==="resolve"?new Date():null},resolved_by_employee_id=${input.kind==="resolve"?actor.id:null},version=version+1,updated_at=now() WHERE id=${id} AND version=${input.version} RETURNING version`)[0];if(!updated)this.deny("Priority was updated by another user.",409);const decisionId=randomUUID();await tx`INSERT INTO manager_decisions(id,priority_id,organization_id,actor_employee_id,kind,evidence,follow_up_at,resulting_commitment_id,resolves_work) VALUES(${decisionId},${id},${actor.organizationId},${actor.id},${input.kind},${input.evidence},${input.followUpAt?new Date(input.followUpAt):null},${commitmentId},${input.kind==="resolve"})`;await this.audit.recordInTransaction(tx,{actorId:actor.id,action:"manager.priority_decided",resourceType:"manager_priority",resourceId:id,before:{status:current.status},after:{status:input.kind==="resolve"?"resolved":"actioned",operationallyOpen:input.kind!=="resolve",commitmentId},reason:input.evidence,correlationId});return{id,decisionId,commitmentId,version:updated.version,operationallyOpen:input.kind!=="resolve"};});}
+  constructor(
+    private sql: Sql,
+    private audit: AuditService,
+    private commitments: CustomerCommitmentService,
+  ) {}
+  private deny(message: string, statusCode = 422): never {
+    throw Object.assign(new Error(message), { statusCode });
+  }
+  private async guard(actor: Actor) {
+    if (actor.role !== "sales_manager")
+      this.deny("Sales Manager role required.", 403);
+    const row = (
+      await this.sql<
+        any[]
+      >`SELECT id FROM employees WHERE id=${actor.id} AND organization_id=${actor.organizationId} AND role='sales_manager' AND active=true`
+    )[0];
+    if (!row) this.deny("Manager scope is not authorized.", 403);
+  }
+  async workspace(actor: Actor) {
+    await this.guard(actor);
+    const priorities = await this.sql<
+      any[]
+    >`SELECT p.id,p.customer_id AS "customerId",p.title,p.reason,p.success_condition AS "successCondition",p.evidence,p.due_at AS "dueAt",p.created_at AS "createdAt",p.updated_at AS "updatedAt",p.urgency,p.status,p.version,p.source_type AS "sourceType",p.source_id AS "sourceId",c.name AS "customerName",e.display_name AS "ownerName",d.kind AS "decisionKind",d.evidence AS "decisionEvidence",d.created_at AS "decisionAt",d.follow_up_at AS "followUpAt",d.resulting_commitment_id AS "resultingCommitmentId",a.display_name AS "decisionActorName" FROM manager_priorities p LEFT JOIN customers c ON c.id=p.customer_id LEFT JOIN employees e ON e.id=p.owner_employee_id LEFT JOIN LATERAL (SELECT * FROM manager_decisions WHERE priority_id=p.id ORDER BY created_at DESC LIMIT 1) d ON true LEFT JOIN employees a ON a.id=d.actor_employee_id WHERE p.organization_id=${actor.organizationId} ORDER BY CASE p.status WHEN 'open' THEN 0 WHEN 'actioned' THEN 1 ELSE 2 END,CASE p.urgency WHEN 'urgent' THEN 0 WHEN 'caution' THEN 1 ELSE 2 END,p.due_at`;
+    const exceptions = await this.sql<
+      any[]
+    >`SELECT x.id,x.customer_id AS "customerId",x.kind,x.severity,x.summary,x.evidence,x.required_next_action AS "requiredNextAction",x.status,x.created_at AS "createdAt",x.source_type AS "sourceType",x.source_id AS "sourceId",e.display_name AS "ownerName",c.name AS "customerName" FROM supervisor_exceptions x LEFT JOIN employees e ON e.id=x.subject_employee_id LEFT JOIN customers c ON c.id=x.customer_id WHERE x.organization_id=${actor.organizationId} AND x.status<>'resolved' ORDER BY CASE x.severity WHEN 'urgent' THEN 0 WHEN 'watch' THEN 1 ELSE 2 END,x.created_at DESC`;
+    return {
+      priorities: priorities.map((p) => ({
+        ...p,
+        resultingCommitment: p.resultingCommitmentId
+          ? { id: p.resultingCommitmentId }
+          : undefined,
+        operationallyOpen: open(p.status),
+      })),
+      exceptions,
+    };
+  }
+  async create(actor: Actor, input: PriorityInput, correlationId: string) {
+    await this.guard(actor);
+    const ownerId = input.ownerEmployeeId ?? actor.id;
+    return this.sql.begin(async (tx) => {
+      const owner = (
+        await tx<
+          any[]
+        >`SELECT id,team_id AS "teamId" FROM employees WHERE id=${ownerId} AND organization_id=${actor.organizationId} AND active=true`
+      )[0];
+      if (!owner) this.deny("Priority owner is not authorized.", 403);
+      if (input.customerId) {
+        const customer = (
+          await tx<
+            any[]
+          >`SELECT id FROM customers WHERE id=${input.customerId} AND organization_id=${actor.organizationId}`
+        )[0];
+        if (!customer) this.deny("Priority customer is not authorized.", 403);
+      }
+      if (input.sourceType === "supervisor_exception" && input.sourceId) {
+        const source = (
+          await tx<
+            any[]
+          >`SELECT id FROM supervisor_exceptions WHERE id=${input.sourceId} AND organization_id=${actor.organizationId}`
+        )[0];
+        if (!source) this.deny("Priority source is not authorized.", 403);
+      }
+      const existing = (
+        await tx<
+          any[]
+        >`SELECT id FROM manager_priorities WHERE organization_id=${actor.organizationId} AND idempotency_key=${input.idempotencyKey}`
+      )[0];
+      if (existing) return { id: existing.id, replayed: true };
+      const id = randomUUID();
+      await tx`INSERT INTO manager_priorities(id,organization_id,customer_id,source_type,source_id,owner_employee_id,owner_team_id,title,reason,success_condition,evidence,due_at,urgency,idempotency_key) VALUES(${id},${actor.organizationId},${input.customerId ?? null},${input.sourceType ?? null},${input.sourceId ?? null},${ownerId},${owner.teamId},${input.title},${input.reason},${input.successCondition},${input.evidence},${new Date(input.dueAt)},${input.urgency},${input.idempotencyKey})`;
+      await this.audit.recordInTransaction(tx, {
+        actorId: actor.id,
+        action: "manager.priority_created",
+        resourceType: "manager_priority",
+        resourceId: id,
+        before: null,
+        after: input,
+        reason: input.evidence,
+        correlationId,
+      });
+      return { id, replayed: false };
+    });
+  }
+  async decide(
+    actor: Actor,
+    id: string,
+    input: {
+      kind: "decision" | "resolve";
+      evidence: string;
+      followUpAt?: string;
+      followUpTitle?: string;
+      idempotencyKey?: string;
+      version: number;
+    },
+    correlationId: string,
+  ) {
+    await this.guard(actor);
+    const current = (
+      await this.sql<
+        any[]
+      >`SELECT * FROM manager_priorities WHERE id=${id} AND organization_id=${actor.organizationId}`
+    )[0];
+    if (!current) this.deny("Priority is not accessible.", 404);
+    if (
+      current.status === "resolved" ||
+      !input.evidence ||
+      (input.kind === "decision" && !input.followUpAt)
+    )
+      this.deny("Invalid manager decision.");
+    return this.sql.begin(async (tx) => {
+      let commitmentId: string | null = null;
+      if (input.kind === "decision") {
+        if (!current.customer_id)
+          this.deny("A customer-linked priority is required for follow-up.");
+        const c = await this.commitments.createCommitmentInTransaction(
+          tx,
+          actor,
+          {
+            customerId: current.customer_id,
+            ownerEmployeeId: current.owner_employee_id,
+            kind: "follow_up",
+            title: input.followUpTitle ?? current.title,
+            dueAt: input.followUpAt!,
+            sourceType: "manager_priority",
+            sourceId: id,
+            sourceEvidence: input.evidence,
+            idempotencyKey: input.idempotencyKey ?? randomUUID(),
+          },
+        );
+        commitmentId = c.id;
+      }
+      const updated = (
+        await tx<
+          any[]
+        >`UPDATE manager_priorities SET status=${input.kind === "resolve" ? "resolved" : "actioned"},resulting_commitment_id=${commitmentId},resolved_at=${input.kind === "resolve" ? new Date() : null},resolved_by_employee_id=${input.kind === "resolve" ? actor.id : null},version=version+1,updated_at=now() WHERE id=${id} AND version=${input.version} RETURNING version`
+      )[0];
+      if (!updated) this.deny("Priority was updated by another user.", 409);
+      const decisionId = randomUUID();
+      await tx`INSERT INTO manager_decisions(id,priority_id,organization_id,actor_employee_id,kind,evidence,follow_up_at,resulting_commitment_id,resolves_work) VALUES(${decisionId},${id},${actor.organizationId},${actor.id},${input.kind},${input.evidence},${input.followUpAt ? new Date(input.followUpAt) : null},${commitmentId},${input.kind === "resolve"})`;
+      await this.audit.recordInTransaction(tx, {
+        actorId: actor.id,
+        action: "manager.priority_decided",
+        resourceType: "manager_priority",
+        resourceId: id,
+        before: { status: current.status },
+        after: {
+          status: input.kind === "resolve" ? "resolved" : "actioned",
+          operationallyOpen: input.kind !== "resolve",
+          commitmentId,
+        },
+        reason: input.evidence,
+        correlationId,
+      });
+      return {
+        id,
+        decisionId,
+        commitmentId,
+        version: updated.version,
+        operationallyOpen: input.kind !== "resolve",
+      };
+    });
+  }
 }

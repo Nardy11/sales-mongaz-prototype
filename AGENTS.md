@@ -12,12 +12,17 @@ When implementing from a selected generated mock, treat that image as the source
 
 ## EES Product Design Context
 
+- The frozen JSX artifacts in `artifacts/` are the visual source of truth for Sales production UI. For Sales fidelity work, begin with Artifact 0's shared shell, then compare each role route directly with its corresponding artifact. Reproduce the compact ledger/rail hierarchy rather than approximating it with generic cards. Every production control that represents an existing operational action must call the canonical backend API and reflect the persisted response; do not simulate a successful mutation in client-only state.
+
 - Preserve the supplied Figma reference language: white light-mode surfaces, EES navy and blue accents, soft blue status pills, compact rounded cards, and Arabic-first RTL hierarchy.
 - Keep bottom navigation as four tightly grouped icon-and-label items: Today, Tasks, Activity, Profile. Place it above the iOS home indicator so neither labels nor icons collide with device chrome.
 - Use readable Arabic system typography, at least 10px navigation labels and 11–12px supporting copy. Favor clear spacing and contrast over decorative effects.
 - Respect the device safe areas: app content begins below the status bar and scroll content clears the persistent bottom navigation.
 - Sales is the first pilot department. Keep the application department-agnostic in task and role vocabulary, while making the visible employee workflow sales-specific: the next action, today’s work, follow-ups, and execution activity.
 - Preserve the current EES visual language when adding Sales workflows; new flows must use the compact rounded cards, navy progress surface, blue actions, and Arabic-first RTL hierarchy rather than introducing CRM or dashboard-heavy layouts.
+- In the device runtime, workspace navigation must scroll only the owned `MobileScroll` viewport; never use global `scrollIntoView`, which can move fixed shell chrome or leave the keyboard open.
+- The login brand panel must use the exact supplied EES company artwork from Figma node `2:2`, via `public/assets/brand/ees-logo.svg`; do not replace it with a text mark or an approximation.
+- Activity is a dedicated, interactive evidence-calendar view inspired by Figma node `3:122`, not a shortcut that scrolls another workspace section. Activity colors represent the density of canonical persisted evidence only; they must not invent targets, attainment, or performance judgments.
 
 ## Editing Boundary
 

@@ -13,6 +13,55 @@ export class RepresentativeService {
     const [close]=await this.sql<any[]>`SELECT (SELECT count(*)::int FROM visits WHERE representative_id=${actor.id} AND planned_at::date=current_date) AS "plannedVisits",(SELECT count(*)::int FROM visits WHERE representative_id=${actor.id} AND completed_at::date=current_date) AS "completedVisits",(SELECT count(DISTINCT customer_id)::int FROM visits WHERE representative_id=${actor.id} AND completed_at::date=current_date) AS "customersVisited",(SELECT count(*)::int FROM sales_orders WHERE recorded_by_employee_id=${actor.id} AND created_at::date=current_date) AS orders,(SELECT COALESCE(sum(oi.quantity*COALESCE(oi.unit_price,0)),0) FROM sales_orders o JOIN sales_order_items oi ON oi.order_id=o.id WHERE o.recorded_by_employee_id=${actor.id} AND o.created_at::date=current_date) AS "orderValue",(SELECT count(*)::int FROM collection_outcomes WHERE representative_id=${actor.id} AND created_at::date=current_date AND outcome IN ('collected','partial')) AS collections,(SELECT COALESCE(sum(amount_collected),0) FROM collection_outcomes WHERE representative_id=${actor.id} AND created_at::date=current_date) AS "collectedAmount",(SELECT count(*)::int FROM collection_outcomes WHERE representative_id=${actor.id} AND created_at::date=current_date AND outcome='promise') AS "paymentPromises",(SELECT COALESCE(sum(promise_amount),0) FROM collection_outcomes WHERE representative_id=${actor.id} AND created_at::date=current_date AND outcome='promise') AS "promiseAmount",(SELECT count(*)::int FROM complaints WHERE recorded_by_employee_id=${actor.id} AND created_at::date=current_date) AS complaints,(SELECT count(*)::int FROM opportunities WHERE owner_employee_id=${actor.id} AND created_at::date=current_date) AS opportunities,(SELECT count(*)::int FROM market_observations WHERE reported_by_employee_id=${actor.id} AND created_at::date=current_date) AS observations,(SELECT count(*)::int FROM commitments WHERE owner_employee_id=${actor.id} AND source_type='reactivation' AND created_at::date=current_date) AS reactivations,(SELECT count(*)::int FROM commitments WHERE owner_employee_id=${actor.id} AND status='open') AS "openFollowUps",(SELECT count(*)::int FROM commitments WHERE owner_employee_id=${actor.id} AND status='open' AND due_at<now()) AS "carriedForward"`;
     return { visits, commitments, close };
   }
+  async activity(actor: Actor) {
+    return this.sql<any[]>`
+      SELECT * FROM (
+        SELECT 'visit:' || v.id::text AS id, 'visit' AS kind, v.id::text AS "sourceId",
+          COALESCE(v.completed_at,v.started_at,v.created_at) AS at, c.name AS title,
+          concat('زيارة ميدانية · ',v.status,' · ',COALESCE(v.outcome,v.purpose),' · ',COALESCE(v.evidence,'دليل بدء أو تخطيط محفوظ')) AS detail,
+          CASE WHEN v.status='completed' THEN 'success' ELSE 'normal' END AS attention
+        FROM visits v JOIN customers c ON c.id=v.customer_id
+        WHERE v.organization_id=${actor.organizationId} AND v.representative_id=${actor.id}
+        UNION ALL
+        SELECT 'order:' || o.id::text,'order',o.id::text,o.created_at,c.name,
+          concat('طلب مسجل · ',o.status,' · مرجع الدليل ',o.id::text),
+          CASE WHEN o.blocked_reason IS NOT NULL THEN 'urgent' WHEN o.status='closed' THEN 'success' ELSE 'normal' END
+        FROM sales_orders o JOIN customers c ON c.id=o.customer_id
+        WHERE o.organization_id=${actor.organizationId} AND o.recorded_by_employee_id=${actor.id}
+        UNION ALL
+        SELECT 'collection:' || x.id::text,'collection',x.id::text,x.created_at,c.name,
+          concat('تحصيل / وعد · ',x.outcome,' · ',x.evidence),
+          CASE WHEN x.outcome IN ('promise','no_collection') THEN 'caution' ELSE 'success' END
+        FROM collection_outcomes x JOIN customers c ON c.id=x.customer_id
+        WHERE x.organization_id=${actor.organizationId} AND x.representative_id=${actor.id}
+        UNION ALL
+        SELECT 'complaint:' || x.id::text,'complaint',x.id::text,x.created_at,c.name,
+          concat('شكوى · ',x.classification,' · ',x.status,' · ',x.description),
+          CASE WHEN x.status='closed' THEN 'success' ELSE 'urgent' END
+        FROM complaints x JOIN customers c ON c.id=x.customer_id
+        WHERE x.organization_id=${actor.organizationId} AND x.recorded_by_employee_id=${actor.id}
+        UNION ALL
+        SELECT 'opportunity:' || x.id::text,'opportunity',x.id::text,x.created_at,c.name,
+          concat('فرصة · ',x.kind,' · ',x.status,' · ',x.note),
+          CASE WHEN x.status='won' THEN 'success' ELSE 'normal' END
+        FROM opportunities x JOIN customers c ON c.id=x.customer_id
+        WHERE x.organization_id=${actor.organizationId} AND x.owner_employee_id=${actor.id}
+        UNION ALL
+        SELECT 'observation:' || x.id::text,'observation',x.id::text,x.observed_at,COALESCE(c.name,'ملاحظة سوق عامة'),
+          concat('ملاحظة سوق · ',x.observation_type,' · ',x.note),'normal'
+        FROM market_observations x LEFT JOIN customers c ON c.id=x.customer_id
+        WHERE x.organization_id=${actor.organizationId} AND x.reported_by_employee_id=${actor.id}
+        UNION ALL
+        SELECT 'commitment:' || x.id::text,'commitment',x.id::text,COALESCE(x.completed_at,x.created_at),c.name,
+          concat('التزام · ',x.title,' · ',x.status,' · ',COALESCE(x.completion_evidence,x.source_evidence,'دليل المصدر محفوظ')),
+          CASE WHEN x.status='completed' THEN 'success' WHEN x.due_at<now() THEN 'urgent' ELSE 'caution' END
+        FROM commitments x JOIN customers c ON c.id=x.customer_id
+        WHERE x.organization_id=${actor.organizationId} AND x.owner_employee_id=${actor.id}
+      ) evidence
+      ORDER BY at DESC
+      LIMIT 120
+    `;
+  }
   async products(actor: Actor) { return this.sql<any[]>`SELECT id,reference_code AS "referenceCode",name FROM products WHERE organization_id=${actor.organizationId} AND active=true`; }
   async createVisit(actor: Actor,input:any,correlationId:string) { await this.customer(actor,input.customerId);const id=randomUUID();await this.sql`INSERT INTO visits(id,organization_id,customer_id,representative_id,planned_at,purpose,idempotency_key) VALUES(${id},${actor.organizationId},${input.customerId},${actor.id},${new Date(input.plannedAt)},${input.purpose},${input.idempotencyKey})`;await this.audit.record({actorId:actor.id,action:"visit.planned",resourceType:"visit",resourceId:id,before:null,after:{},reason:null,correlationId});return{id}; }
   async startVisit(actor: Actor,id:string,correlationId:string) { const [row]=await this.sql<any[]>`UPDATE visits SET status='in_progress',started_at=now() WHERE id=${id} AND representative_id=${actor.id} AND status='planned' RETURNING id`;if(!row)throw Object.assign(new Error("Visit cannot be started."),{statusCode:409});await this.audit.record({actorId:actor.id,action:"visit.started",resourceType:"visit",resourceId:id,before:null,after:{},reason:null,correlationId});return row; }

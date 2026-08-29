@@ -1,2 +1,138 @@
-.supervisor-workspace{display:grid;gap:18px}.supervisor-workspace h2{font-size:14px;margin:0 0 8px;color:var(--ink-800)}.supervisor-tabs,.supervisor-actions{display:flex;gap:8px;flex-wrap:wrap}.supervisor-tabs{padding:3px;border:1px solid var(--rule);background:var(--canvas-alt);border-radius:9px}.supervisor-tabs button{flex:1;min-height:38px;border-radius:7px;border:0;background:transparent;color:var(--ink-600);font:inherit}.supervisor-tabs button[aria-selected=true]{background:var(--ink-900);color:#fff}.supervisor-exception{width:100%;display:grid;gap:5px;text-align:right;padding:12px 4px;border:0;border-top:1px solid var(--rule);background:transparent;font:inherit;color:var(--ink-800)}.supervisor-exception.selected{background:var(--quiet-blue);padding-inline:10px}.supervisor-exception span,.supervisor-exception small{color:var(--ink-500);font-size:12px}.supervisor-detail{border-top:2px solid var(--brass);padding-top:12px}.supervisor-detail p{font-size:13px;line-height:1.6}.supervisor-detail label{display:grid;gap:6px;font-size:13px;font-weight:700;margin:12px 0}.supervisor-detail textarea{min-height:76px}
-.manager-reporting{border-top:2px solid var(--brass);padding-top:12px}.manager-reporting>p{font-size:12px;line-height:1.6;color:var(--ink-600)}.manager-reporting-metric{border-top:1px solid var(--rule);padding-top:8px;margin-top:8px}.manager-reporting-metric>p{margin:6px 0 0;padding-inline:4px;font-size:12px;line-height:1.6;color:var(--ink-600)}
+.supervisor-workspace {
+  display: grid;
+  gap: 18px;
+}
+.supervisor-workspace h2 {
+  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--ink-800);
+}
+.supervisor-tabs,
+.supervisor-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.supervisor-reassign {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  align-items: end;
+  gap: 5px 8px;
+  width: 100%;
+  padding: 10px 0 2px;
+  color: var(--ink-700);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.supervisor-reassign select {
+  min-height: 40px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--canvas);
+  padding: 0 9px;
+  color: var(--ink-900);
+  font: inherit;
+}
+.supervisor-reassign > button { min-height: 40px; }
+.manager-exception-row {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 9px;
+}
+.manager-exception-row > .ds-ledger-row { border-bottom: 0; }
+.manager-exception-row > .production-secondary {
+  margin-inline-start: 4px;
+  min-height: 34px;
+  padding: 5px 10px;
+  font-size: 11.5px;
+}
+.supervisor-tabs {
+  padding: 3px;
+  border: 1px solid var(--rule);
+  background: var(--canvas-alt);
+  border-radius: 9px;
+}
+.supervisor-tabs button {
+  flex: 1;
+  min-height: 38px;
+  border-radius: 7px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-600);
+  font: inherit;
+}
+.supervisor-tabs button[aria-selected="true"] {
+  background: var(--ink-900);
+  color: #fff;
+}
+.supervisor-exception {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+  text-align: right;
+  padding: 12px 4px;
+  border: 0;
+  border-top: 1px solid var(--rule);
+  background: transparent;
+  font: inherit;
+  color: var(--ink-800);
+}
+.supervisor-exception.selected {
+  background: var(--quiet-blue);
+  padding-inline: 10px;
+}
+.supervisor-exception span,
+.supervisor-exception small {
+  color: var(--ink-500);
+  font-size: 12px;
+}
+.supervisor-detail {
+  border-top: 2px solid var(--brass);
+  padding-top: 12px;
+}
+.supervisor-detail p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.supervisor-detail label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 12px 0;
+}
+.supervisor-detail textarea {
+  min-height: 76px;
+}
+.manager-reporting {
+  border-top: 2px solid var(--brass);
+  padding-top: 12px;
+}
+.manager-reporting > p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+.manager-reporting-metric {
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.manager-reporting-metric > p {
+  margin: 6px 0 0;
+  padding-inline: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-600);
+}
+
+/* Artifact 3 — Supervisor control surface uses a compact readiness ledger and priority rail. */
+.supervisor-workspace{display:flex;flex-direction:column;gap:0}.supervisor-workspace>.ds-hero{margin-bottom:20px}.supervisor-workspace>section{margin:0}.supervisor-workspace h2{margin:20px 2px 10px;padding-inline-start:8px;border-inline-start:2px solid var(--brass);font-family:Tajawal,"Noto Sans Arabic",sans-serif;font-size:13px;font-weight:700;color:var(--ink-700)}
+.supervisor-checkpoint-panel{display:flex;flex-direction:column}.supervisor-tabs{display:flex;gap:0;order:-1;margin-bottom:18px;padding:3px;border:1px solid var(--rule);border-radius:8px;background:var(--canvas-alt)}.supervisor-tabs button{min-height:38px;border-radius:6px;color:var(--ink-700);font-size:12px;font-weight:700}.supervisor-tabs button:first-child{background:var(--ink-900);color:#fff}.supervisor-tabs button.is-recorded:not(:first-child){color:var(--ink-700)}
+.supervisor-checkpoint-panel>.ds-ledger-row{padding:11px 4px}.supervisor-checkpoint-panel>.ds-ledger-row strong{font-size:15px;color:var(--ink-900)}.supervisor-checkpoint-panel>.ds-ledger-row p{font-size:11.5px}.supervisor-priority-section{margin-top:8px!important}.supervisor-priority-rail{display:flex;flex-direction:column;border-top:1px solid var(--rule)}
+.supervisor-readiness-ledger{margin-top:4px;border-top:1px dashed var(--rule)}.supervisor-readiness-ledger .ds-ledger-row>strong{min-width:22px;text-align:center;color:var(--ink-900);font-size:16px}.supervisor-readiness-ledger .ds-ledger-row p{max-width:25ch}
+.supervisor-tabs button.active{background:var(--ink-900);color:#fff}.supervisor-tabs button:first-child:not(.active){background:transparent;color:var(--ink-700)}
+.supervisor-exception{position:relative;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;min-height:82px;padding:13px 4px 15px;border:0;border-bottom:1px solid var(--rule);background:transparent}.supervisor-exception::before{content:"";position:absolute;top:25px;right:4px;width:10px;height:10px;border-radius:2px;background:var(--danger);transform:rotate(45deg)}.supervisor-exception .ds-status{grid-column:1;grid-row:1;margin-inline-end:18px}.supervisor-exception strong{grid-column:2;grid-row:1;font-family:Tajawal,"Noto Sans Arabic",sans-serif;font-size:14px;font-weight:600;color:var(--ink-900)}.supervisor-exception span,.supervisor-exception small{grid-column:2;color:var(--ink-500);font-size:11.5px;line-height:1.45}.supervisor-exception.selected{padding-inline:4px;background:transparent}.supervisor-exception.selected strong{color:var(--ink-900)}
+.supervisor-detail{margin-top:14px!important;border-top:2px solid var(--brass);padding-top:0}.supervisor-detail>h2{margin-top:14px}.supervisor-detail p{font-size:12px;color:var(--ink-700)}.supervisor-actions{padding-top:10px;border-top:1px solid var(--rule)}
+
+/* Artifact 5 — Manager review reads as a checkpoint ledger, not KPI cards. */
+.artifact5-manager-dashboard{display:flex;flex-direction:column;margin-top:18px}.artifact5-checkpoints{display:flex;gap:0;margin:0 0 18px;padding:3px;border:1px solid var(--rule);border-radius:8px;background:var(--canvas-alt)}.artifact5-checkpoints button{flex:1;min-height:42px;display:grid;place-items:center;border:0;border-radius:6px;background:transparent;color:var(--ink-700);font:inherit;font-size:12px;font-weight:700;cursor:pointer}.artifact5-checkpoints button:hover{color:var(--ink-900)}.artifact5-checkpoints button:focus-visible{outline:3px solid var(--action);outline-offset:2px}.artifact5-checkpoints .active{background:var(--ink-900);color:#fff;box-shadow:0 1px 3px rgba(15,37,64,.18)}.artifact5-checkpoints .active:hover{color:#fff}.artifact5-manager-dashboard>h2{margin:0 2px 10px}.artifact5-manager-dashboard>.ds-ledger-row{padding:11px 4px}.artifact5-manager-dashboard>.ds-ledger-row strong{font-size:16px;color:var(--ink-900)}.artifact5-manager-dashboard>p{margin:10px 4px 0;padding-top:10px;border-top:1px dashed var(--rule);color:var(--ink-400);font-size:11px;line-height:1.5}
